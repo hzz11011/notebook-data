@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网络记事本</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 左侧边栏 -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2><i class="fas fa-book"></i> 我的记事本</h2>
+                <div class="sidebar-actions">
+                    <button class="add-note-btn" onclick="createNewNote()">
+                        <i class="fas fa-plus"></i> 新建笔记
+                    </button>
+                    <button class="add-category-btn" onclick="addCategory()">
+                        <i class="fas fa-folder-plus"></i> 新建分类
+                    </button>
+                    <button class="import-btn" onclick="importNotes()" title="导入笔记">
+                        <i class="fas fa-upload"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="categories-container">
+                <div class="category" data-category="默认">
+                    <div class="category-header" onclick="toggleCategory('默认')">
+                        <i class="fas fa-folder"></i>
+                        <span>默认</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="category-notes" id="notes-默认">
+                        <!-- 笔记列表将在这里动态生成 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主内容区域 -->
+        <div class="main-content">
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <button class="tool-btn" onclick="toggleBold()" title="粗体">
+                        <i class="fas fa-bold"></i>
+                    </button>
+                    <button class="tool-btn" onclick="toggleItalic()" title="斜体">
+                        <i class="fas fa-italic"></i>
+                    </button>
+                    <button class="tool-btn" onclick="toggleUnderline()" title="下划线">
+                        <i class="fas fa-underline"></i>
+                    </button>
+                    <button class="tool-btn" onclick="changeFontSize()" title="字体大小">
+                        <i class="fas fa-text-height"></i>
+                    </button>
+                    <button class="tool-btn" onclick="changeTextColor()" title="文字颜色">
+                        <i class="fas fa-palette"></i>
+                    </button>
+                    <button class="tool-btn" onclick="insertImage()" title="插入图片">
+                        <i class="fas fa-image"></i>
+                    </button>
+                    <button class="tool-btn" onclick="insertLink()" title="插入链接">
+                        <i class="fas fa-link"></i>
+                    </button>
+                </div>
+                
+                <div class="toolbar-center">
+                    <div class="save-status" id="save-status">
+                        <i class="fas fa-check-circle"></i>
+                        <span>已保存</span>
+                    </div>
+                </div>
+                
+                <div class="toolbar-right">
+                    <button class="tool-btn" onclick="changeBackground()" title="背景色">
+                        <i class="fas fa-fill-drip"></i>
+                    </button>
+                    <button class="tool-btn" onclick="toggleTheme()" title="切换主题">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <button class="tool-btn" onclick="generateQR()" title="生成二维码">
+                        <i class="fas fa-qrcode"></i>
+                    </button>
+                    <button class="tool-btn" onclick="shareNote()" title="分享">
+                        <i class="fas fa-share"></i>
+                    </button>
+                    <button class="tool-btn" onclick="exportNotes()" title="导出">
+                        <i class="fas fa-download"></i>
+                    </button>
+                    <button class="tool-btn" onclick="loadFromGitee()" title="从 Gitee 加载数据">
+                        <i class="fab fa-gitee"></i>
+                    </button>
+                    <button class="tool-btn" onclick="saveNote()" title="保存">
+                        <i class="fas fa-save"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="editor-container">
+                <div class="note-header">
+                    <input type="text" id="note-title" placeholder="输入笔记标题..." class="note-title-input">
+                    <div class="category-dropdown" id="category-dropdown">
+                        <div class="category-dropdown-trigger" id="category-trigger">
+                            <span id="category-display">默认</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                        <div class="category-dropdown-menu" id="category-menu">
+                            <!-- 分类选项将通过JavaScript动态生成 -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="editor-wrapper">
+                    <div id="editor" contenteditable="true" class="editor" data-placeholder="开始编写您的笔记..."></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 移动端菜单按钮 -->
+        <button class="mobile-menu-btn" onclick="toggleSidebar()">
+            <i class="fas fa-bars"></i>
+        </button>
+    </div>
+
+    <!-- 模态框 -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- 字体选择器 -->
+    <div id="font-selector" class="font-selector">
+        <div class="font-selector-content">
+            <h3>字体设置</h3>
+            
+            <div class="font-setting-group">
+                <label>字体大小：</label>
+                <select id="font-size-select" onchange="applyFontSize(this.value)">
+                    <option value="12px">12px</option>
+                    <option value="14px" selected>14px</option>
+                    <option value="16px">16px</option>
+                    <option value="18px">18px</option>
+                    <option value="20px">20px</option>
+                    <option value="24px">24px</option>
+                    <option value="28px">28px</option>
+                    <option value="32px">32px</option>
+                    <option value="36px">36px</option>
+                    <option value="48px">48px</option>
+                </select>
+            </div>
+            
+            <div class="font-setting-group">
+                <label>字体样式：</label>
+                <select id="font-family-select" onchange="applyFontFamily(this.value)">
+                    <option value="inherit" selected>默认</option>
+                    <option value="Arial, sans-serif">Arial</option>
+                    <option value="'Times New Roman', serif">Times New Roman</option>
+                    <option value="'Courier New', monospace">Courier New</option>
+                    <option value="'Georgia', serif">Georgia</option>
+                    <option value="'Verdana', sans-serif">Verdana</option>
+                    <option value="'Helvetica', sans-serif">Helvetica</option>
+                    <option value="'Comic Sans MS', cursive">Comic Sans MS</option>
+                    <option value="'Impact', sans-serif">Impact</option>
+                    <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+                </select>
+            </div>
+            
+            <div class="font-setting-group">
+                <label>行高：</label>
+                <select id="line-height-select" onchange="applyLineHeight(this.value)">
+                    <option value="1.2">1.2</option>
+                    <option value="1.4">1.4</option>
+                    <option value="1.6" selected>1.6</option>
+                    <option value="1.8">1.8</option>
+                    <option value="2.0">2.0</option>
+                </select>
+            </div>
+            
+            <div class="font-setting-actions">
+                <button class="font-btn primary" onclick="applyFontSettings()">应用</button>
+                <button class="font-btn secondary" onclick="closeFontSelector()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 颜色选择器 -->
+    <input type="color" id="color-picker" style="display: none;" onchange="applyColor(this.value)">
+
+    <!-- 背景色选择器 -->
+    <input type="color" id="bg-color-picker" style="display: none;" onchange="applyBackgroundColor(this.value)">
+
+    <script src="script.js"></script>
+</body>
+</html>
