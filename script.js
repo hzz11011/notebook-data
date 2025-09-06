@@ -560,8 +560,14 @@ async function uploadToGitHub(data, filename, username, token, repo) {
 async function uploadToGitee(data, filename, username, token, repo) {
     const [owner, repoName] = username.includes('/') ? username.split('/') : [username, repo];
     
+    // 获取文件 SHA（如果文件存在）
+    const sha = await getGiteeFileSHA(owner, repoName, filename, token);
+    
+    // 根据文件是否存在选择 HTTP 方法
+    const method = sha ? 'PUT' : 'POST';
+    
     const response = await fetch(`https://gitee.com/api/v5/repos/${owner}/${repoName}/contents/${filename}`, {
-        method: 'POST',
+        method: method,
         headers: {
             'Content-Type': 'application/json',
         },
@@ -569,7 +575,7 @@ async function uploadToGitee(data, filename, username, token, repo) {
             access_token: token,
             message: `Update ${filename}`,
             content: btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2)))),
-            sha: await getGiteeFileSHA(owner, repoName, filename, token)
+            sha: sha
         })
     });
     
@@ -828,8 +834,11 @@ async function uploadToGitee(data) {
         // 获取文件 SHA（如果文件存在）
         const sha = await getGiteeFileSHA(owner, repo, path, token);
         
+        // 根据文件是否存在选择 HTTP 方法
+        const method = sha ? 'PUT' : 'POST';
+        
         const response = await fetch(`https://gitee.com/api/v5/repos/${owner}/${repo}/contents/${path}`, {
-            method: 'POST',
+            method: method,
             headers: {
                 'Content-Type': 'application/json',
             },
