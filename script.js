@@ -8,15 +8,23 @@ let autoSaveTimer = null;
 let isAutoSaving = false;
 let lastEditedNote = localStorage.getItem('lastEditedNote');
 
-// Gitee 自动保存配置（直接配置）
+// Supabase 配置
+const supabaseUrl = 'https://zjqtwpoactfbvwtleoeu.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqcXR3cG9hY3RmYnZ3dGxlb2V1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxNTU4NjMsImV4cCI6MjA3MjczMTg2M30.glOPKH0uPBsxynVTpeaz-SIsWfo4raXcP7BSAZUfZ6U';
+
+// 初始化 Supabase 客户端
+const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+// Gitee 自动保存配置（保留作为备份）
 let giteeConfig = {
-    enabled: true,
+    enabled: false, // 禁用 Gitee，使用 Supabase
     token: 'da87083614cbefd4a01618fcec759e4d',
     owner: 'nmghzz',
     repo: 'notebook-data',
     path: 'notebook-data.json'
 };
 let isSavingToGitee = false;
+let isSavingToSupabase = false;
 
 // 初始化应用
 document.addEventListener('DOMContentLoaded', function() {
@@ -25,8 +33,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // 修复分类数据（如果需要）
     fixCategoryData();
     
-    // 自动从 Gitee 加载数据（静默加载）
-    loadFromGitee(false);
+    // 初始化 Supabase 数据库表
+    initializeSupabaseTables();
+    
+    // 自动从 Supabase 加载数据（静默加载）
+    loadFromSupabase(false);
     
     loadNotes();
     updateCategorySelect();
@@ -379,6 +390,183 @@ function selectCategoryFromDropdown(categoryName) {
 // 保存分类数据
 function saveCategories() {
     localStorage.setItem('categories', JSON.stringify(categories));
+}
+
+// ==================== Supabase 数据库功能 ====================
+
+// 初始化 Supabase 数据库表
+async function initializeSupabaseTables() {
+    try {
+        // 检查 notes 表是否存在，如果不存在则创建
+        const { data: tables, error } = await supabase
+            .from('information_schema.tables')
+            .select('table_name')
+            .eq('table_schema', 'public')
+            .eq('table_name', 'notes');
+        
+        if (error) {
+            console.log('检查表结构时出错，可能需要手动创建表:', error);
+            return;
+        }
+        
+        if (!tables || tables.length === 0) {
+            console.log('notes 表不存在，请手动在 Supabase 中创建表');
+            showNotification('请先在 Supabase 中创建数据库表', 'warning');
+        } else {
+            console.log('Supabase 数据库连接成功');
+        }
+    } catch (error) {
+        console.error('初始化 Supabase 表时出错:', error);
+    }
+}
+
+// 保存数据到 Supabase
+async function saveToSupabase() {
+    if (isSavingToSupabase) {
+        return;
+    }
+    
+    isSavingToSupabase = true;
+    
+    try {
+        // 保存所有笔记
+        for (const [noteId, note] of Object.entries(notes)) {
+            const { error } = await supabase
+                .from('notes')
+                .upsert({
+                    id: noteId,
+                    title: note.title,
+                    content: note.content,
+                    category: note.category,
+                    background_color: note.backgroundColor,
+                    created_at: note.createdAt,
+                    updated_at: note.updatedAt
+                });
+            
+            if (error) {
+                console.error('保存笔记失败:', noteId, error);
+            }
+        }
+        
+        // 保存分类
+        const { error: categoryError } = await supabase
+            .from('categories')
+            .upsert({
+                id: 'default',
+                categories: categories,
+                theme: currentTheme,
+                last_edited_note: lastEditedNote,
+                updated_at: new Date().toISOString()
+            });
+        
+        if (categoryError) {
+            console.error('保存分类失败:', categoryError);
+        }
+        
+        console.log('数据已保存到 Supabase');
+        return { success: true };
+    } catch (error) {
+        console.error('保存到 Supabase 失败:', error);
+        return { success: false, error: error.message };
+    } finally {
+        isSavingToSupabase = false;
+    }
+}
+
+// 从 Supabase 加载数据
+async function loadFromSupabase(showNotification = true) {
+    if (showNotification) {
+        showNotification('正在从 Supabase 加载数据...', 'info');
+    }
+    
+    try {
+        // 加载笔记
+        const { data: notesData, error: notesError } = await supabase
+            .from('notes')
+            .select('*');
+        
+        if (notesError) {
+            console.error('加载笔记失败:', notesError);
+            if (showNotification) {
+                showNotification('加载笔记失败: ' + notesError.message, 'error');
+            }
+            return;
+        }
+        
+        // 加载分类和设置
+        const { data: settingsData, error: settingsError } = await supabase
+            .from('categories')
+            .select('*')
+            .eq('id', 'default')
+            .single();
+        
+        if (settingsError && settingsError.code !== 'PGRST116') { // PGRST116 表示没有找到记录
+            console.error('加载设置失败:', settingsError);
+        }
+        
+        // 更新本地数据
+        if (notesData && notesData.length > 0) {
+            const newNotes = {};
+            notesData.forEach(note => {
+                newNotes[note.id] = {
+                    id: note.id,
+                    title: note.title,
+                    content: note.content,
+                    category: note.category,
+                    backgroundColor: note.background_color,
+                    createdAt: note.created_at,
+                    updatedAt: note.updated_at
+                };
+            });
+            
+            // 合并数据
+            notes = { ...notes, ...newNotes };
+        }
+        
+        if (settingsData) {
+            if (settingsData.categories) {
+                categories = [...new Set([...categories, ...settingsData.categories])];
+            }
+            if (settingsData.theme) {
+                currentTheme = settingsData.theme;
+            }
+            if (settingsData.last_edited_note) {
+                lastEditedNote = settingsData.last_edited_note;
+            }
+        }
+        
+        // 保存到本地存储
+        saveNotes();
+        saveCategories();
+        localStorage.setItem('theme', currentTheme);
+        localStorage.setItem('lastEditedNote', lastEditedNote);
+        
+        // 更新界面
+        loadNotes();
+        updateCategorySelect();
+        applyTheme(currentTheme);
+        
+        if (showNotification) {
+            showNotification('数据加载成功！', 'success');
+        }
+    } catch (error) {
+        console.error('从 Supabase 加载数据失败:', error);
+        if (showNotification) {
+            showNotification('加载失败: ' + error.message, 'error');
+        }
+    }
+}
+
+// 自动保存到 Supabase
+async function autoSaveToSupabase() {
+    if (!isSavingToSupabase) {
+        // 延迟3秒后自动保存，避免频繁保存
+        setTimeout(() => {
+            if (!isSavingToSupabase) {
+                saveToSupabase();
+            }
+        }, 3000);
+    }
 }
 
 // ==================== 云端同步功能 ====================
@@ -1208,8 +1396,8 @@ function autoSave() {
             // 显示保存成功状态
             updateSaveStatus('saved');
             
-            // 触发自动保存到 Gitee
-            autoSaveToGitee();
+            // 触发自动保存到 Supabase
+            autoSaveToSupabase();
         }
     } catch (error) {
         console.error('自动保存失败:', error);
