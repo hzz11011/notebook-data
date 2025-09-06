@@ -26,6 +26,34 @@
                         <i class="fas fa-upload"></i>
                     </button>
                 </div>
+                
+                <!-- 使用量显示区域 -->
+                <div class="usage-info">
+                    <div class="usage-header">
+                        <i class="fas fa-database"></i>
+                        <span>存储使用量</span>
+                        <button class="refresh-usage-btn" onclick="refreshUsage()" title="刷新使用量">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="usage-content">
+                        <div class="usage-item">
+                            <span class="usage-label">笔记数量:</span>
+                            <span class="usage-value" id="notes-count">-</span>
+                        </div>
+                        <div class="usage-item">
+                            <span class="usage-label">数据库大小:</span>
+                            <span class="usage-value" id="db-size">-</span>
+                        </div>
+                        <div class="usage-item">
+                            <span class="usage-label">使用率:</span>
+                            <span class="usage-value" id="usage-percentage">-</span>
+                        </div>
+                        <div class="usage-progress">
+                            <div class="usage-bar" id="usage-bar"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <div class="categories-container">

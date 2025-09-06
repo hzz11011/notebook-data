@@ -58,8 +58,13 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // 自动从 Supabase 加载数据（静默加载）
             loadFromSupabase(false);
+            
+            // 启动使用量显示
+            startUsageAutoRefresh();
         } else {
             console.log('Supabase 初始化失败，使用本地存储');
+            // 即使 Supabase 失败，也显示本地使用量
+            startUsageAutoRefresh();
         }
     }, 1000); // 延迟1秒等待 Supabase 库加载
     
@@ -597,6 +602,111 @@ async function autoSaveToSupabase() {
             }
         }, 3000);
     }
+}
+
+// ==================== 使用量显示功能 ====================
+
+// 获取数据库使用量
+async function getDatabaseUsage() {
+    if (!supabase) {
+        console.error('Supabase 客户端未初始化');
+        return null;
+    }
+    
+    try {
+        // 获取笔记数量
+        const { data: notesData, error: notesError } = await supabase
+            .from('notes')
+            .select('id', { count: 'exact' });
+        
+        if (notesError) {
+            console.error('获取笔记数量失败:', notesError);
+            return null;
+        }
+        
+        // 获取数据库大小（通过 SQL 查询）
+        const { data: sizeData, error: sizeError } = await supabase
+            .rpc('get_database_size');
+        
+        let dbSize = '未知';
+        if (!sizeError && sizeData) {
+            dbSize = sizeData;
+        }
+        
+        return {
+            notesCount: notesData.length || 0,
+            dbSize: dbSize,
+            totalLimit: '500MB' // Supabase 免费计划限制
+        };
+    } catch (error) {
+        console.error('获取使用量失败:', error);
+        return null;
+    }
+}
+
+// 更新使用量显示
+async function updateUsageDisplay() {
+    const usage = await getDatabaseUsage();
+    
+    if (!usage) {
+        // 如果无法获取 Supabase 数据，显示本地数据
+        const localNotesCount = Object.keys(notes).length;
+        document.getElementById('notes-count').textContent = localNotesCount;
+        document.getElementById('db-size').textContent = '本地存储';
+        document.getElementById('usage-percentage').textContent = '-';
+        document.getElementById('usage-bar').style.width = '0%';
+        return;
+    }
+    
+    // 更新显示
+    document.getElementById('notes-count').textContent = usage.notesCount;
+    document.getElementById('db-size').textContent = usage.dbSize;
+    
+    // 计算使用率（假设 500MB 限制）
+    const totalLimitMB = 500;
+    const currentSizeMB = parseFloat(usage.dbSize) || 0;
+    const usagePercentage = Math.min((currentSizeMB / totalLimitMB) * 100, 100);
+    
+    document.getElementById('usage-percentage').textContent = `${usagePercentage.toFixed(1)}%`;
+    
+    // 更新进度条
+    const usageBar = document.getElementById('usage-bar');
+    usageBar.style.width = `${usagePercentage}%`;
+    
+    // 根据使用率设置颜色
+    usageBar.className = 'usage-bar';
+    if (usagePercentage < 50) {
+        usageBar.classList.add('low');
+    } else if (usagePercentage < 80) {
+        usageBar.classList.add('medium');
+    } else {
+        usageBar.classList.add('high');
+    }
+}
+
+// 刷新使用量
+async function refreshUsage() {
+    const refreshBtn = document.querySelector('.refresh-usage-btn i');
+    refreshBtn.style.animation = 'spin 1s linear infinite';
+    
+    try {
+        await updateUsageDisplay();
+        showNotification('使用量已刷新', 'success');
+    } catch (error) {
+        console.error('刷新使用量失败:', error);
+        showNotification('刷新失败', 'error');
+    } finally {
+        refreshBtn.style.animation = '';
+    }
+}
+
+// 自动刷新使用量
+function startUsageAutoRefresh() {
+    // 初始加载
+    updateUsageDisplay();
+    
+    // 每5分钟自动刷新一次
+    setInterval(updateUsageDisplay, 5 * 60 * 1000);
 }
 
 // ==================== 云端同步功能 ====================

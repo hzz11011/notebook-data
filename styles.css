@@ -1043,6 +1043,109 @@ body {
     background: #218838;
 }
 
+/* 使用量显示样式 */
+.usage-info {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 12px;
+    margin: 10px 0;
+    border: 1px solid var(--border-color);
+}
+
+.usage-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+}
+
+.usage-header i {
+    margin-right: 6px;
+    color: var(--primary-color);
+}
+
+.refresh-usage-btn {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.refresh-usage-btn:hover {
+    background: var(--hover-bg);
+    color: var(--primary-color);
+}
+
+.refresh-usage-btn i {
+    font-size: 12px;
+}
+
+.usage-content {
+    font-size: 12px;
+}
+
+.usage-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    align-items: center;
+}
+
+.usage-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.usage-value {
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+.usage-progress {
+    width: 100%;
+    height: 6px;
+    background: var(--border-color);
+    border-radius: 3px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+
+.usage-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50 0%, #FFC107 70%, #F44336 100%);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+.usage-bar.low {
+    background: #4CAF50;
+}
+
+.usage-bar.medium {
+    background: #FFC107;
+}
+
+.usage-bar.high {
+    background: #F44336;
+}
+
+/* 旋转动画 */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
     .sidebar {
