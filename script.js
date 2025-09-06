@@ -543,7 +543,7 @@ async function uploadToGitHub(data, filename, username, token, repo) {
         },
         body: JSON.stringify({
             message: `Update ${filename}`,
-            content: btoa(JSON.stringify(data, null, 2)),
+            content: btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2)))),
             sha: await getFileSHA(owner, repoName, filename, token)
         })
     });
@@ -568,7 +568,7 @@ async function uploadToGitee(data, filename, username, token, repo) {
         body: JSON.stringify({
             access_token: token,
             message: `Update ${filename}`,
-            content: btoa(JSON.stringify(data, null, 2)),
+            content: btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2)))),
             sha: await getGiteeFileSHA(owner, repoName, filename, token)
         })
     });
@@ -745,7 +745,7 @@ async function downloadFromGitHub(username, token, repo) {
     
     if (response.ok) {
         const data = await response.json();
-        return JSON.parse(atob(data.content));
+        return JSON.parse(decodeURIComponent(escape(atob(data.content))));
     } else {
         throw new Error('下载失败');
     }
@@ -759,7 +759,7 @@ async function downloadFromGitee(username, token, repo) {
     
     if (response.ok) {
         const data = await response.json();
-        return JSON.parse(atob(data.content));
+        return JSON.parse(decodeURIComponent(escape(atob(data.content))));
     } else {
         throw new Error('下载失败');
     }
@@ -836,7 +836,7 @@ async function uploadToGitee(data) {
             body: JSON.stringify({
                 access_token: token,
                 message: `自动保存: ${new Date().toLocaleString()}`,
-                content: btoa(JSON.stringify(data, null, 2)),
+                content: btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2)))),
                 sha: sha
             })
         });
@@ -993,7 +993,7 @@ async function loadFromGitee(showNotification = true) {
         
         if (response.ok) {
             const data = await response.json();
-            const content = JSON.parse(atob(data.content));
+            const content = JSON.parse(decodeURIComponent(escape(atob(data.content))));
             
             if (content.notes) {
                 // 合并数据
