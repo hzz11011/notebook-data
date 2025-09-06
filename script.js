@@ -671,12 +671,19 @@ async function getDatabaseUsage() {
         // 获取数据库大小（通过计算笔记内容大小）
         let dbSize = '未知';
         try {
-            // 计算所有笔记的总大小
+            // 计算所有笔记的总大小（包括JSON结构开销）
             const allNotes = Object.values(notes);
-            const totalSize = allNotes.reduce((size, note) => {
-                return size + (note.title ? note.title.length : 0) + 
-                       (note.content ? note.content.length : 0);
-            }, 0);
+            let totalSize = 0;
+            
+            allNotes.forEach(note => {
+                // 计算每个笔记的JSON字符串大小
+                const noteJson = JSON.stringify(note);
+                totalSize += new Blob([noteJson]).size;
+            });
+            
+            // 添加分类和其他数据的开销（估算）
+            const categoriesJson = JSON.stringify(categories);
+            totalSize += new Blob([categoriesJson]).size;
             
             // 转换为可读格式
             if (totalSize < 1024) {
@@ -722,7 +729,17 @@ async function updateUsageDisplay() {
     
     // 计算使用率（假设 500MB 限制）
     const totalLimitMB = 500;
-    const currentSizeMB = parseFloat(usage.dbSize) || 0;
+    let currentSizeMB = 0;
+    
+    // 解析数据库大小
+    if (usage.dbSize.includes('KB')) {
+        currentSizeMB = parseFloat(usage.dbSize) / 1024;
+    } else if (usage.dbSize.includes('MB')) {
+        currentSizeMB = parseFloat(usage.dbSize);
+    } else if (usage.dbSize.includes('B')) {
+        currentSizeMB = parseFloat(usage.dbSize) / (1024 * 1024);
+    }
+    
     const usagePercentage = Math.min((currentSizeMB / totalLimitMB) * 100, 100);
     
     document.getElementById('usage-percentage').textContent = `${usagePercentage.toFixed(1)}%`;
