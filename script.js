@@ -13,7 +13,24 @@ const supabaseUrl = 'https://zjqtwpoactfbvwtleoeu.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqcXR3cG9hY3RmYnZ3dGxlb2V1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxNTU4NjMsImV4cCI6MjA3MjczMTg2M30.glOPKH0uPBsxynVTpeaz-SIsWfo4raXcP7BSAZUfZ6U';
 
 // 初始化 Supabase 客户端
-const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+let supabase = null;
+
+// 延迟初始化 Supabase
+function initializeSupabase() {
+    try {
+        if (window.supabase) {
+            supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+            console.log('Supabase 客户端初始化成功');
+            return true;
+        } else {
+            console.error('Supabase 库未加载');
+            return false;
+        }
+    } catch (error) {
+        console.error('Supabase 初始化失败:', error);
+        return false;
+    }
+}
 
 // Gitee 自动保存配置（保留作为备份）
 let giteeConfig = {
@@ -33,11 +50,18 @@ document.addEventListener('DOMContentLoaded', function() {
     // 修复分类数据（如果需要）
     fixCategoryData();
     
-    // 初始化 Supabase 数据库表
-    initializeSupabaseTables();
-    
-    // 自动从 Supabase 加载数据（静默加载）
-    loadFromSupabase(false);
+    // 初始化 Supabase
+    setTimeout(() => {
+        if (initializeSupabase()) {
+            // 初始化 Supabase 数据库表
+            initializeSupabaseTables();
+            
+            // 自动从 Supabase 加载数据（静默加载）
+            loadFromSupabase(false);
+        } else {
+            console.log('Supabase 初始化失败，使用本地存储');
+        }
+    }, 1000); // 延迟1秒等待 Supabase 库加载
     
     loadNotes();
     updateCategorySelect();
@@ -422,6 +446,12 @@ async function initializeSupabaseTables() {
 
 // 保存数据到 Supabase
 async function saveToSupabase() {
+    if (!supabase) {
+        console.error('Supabase 客户端未初始化');
+        showNotification('Supabase 未初始化，无法保存', 'error');
+        return { success: false, error: 'Supabase 未初始化' };
+    }
+    
     if (isSavingToSupabase) {
         return;
     }
