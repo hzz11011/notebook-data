@@ -120,11 +120,17 @@
                     <button class="tool-btn" onclick="exportNotes()" title="导出">
                         <i class="fas fa-download"></i>
                     </button>
-                    <button class="tool-btn" onclick="loadFromSupabase()" title="从 Supabase 加载数据">
+                    <button class="tool-btn" onclick="forceLoadFromDatabase()" title="强制从数据库加载">
                         <i class="fas fa-database"></i>
                     </button>
                     <button class="tool-btn" onclick="saveToSupabase()" title="保存到 Supabase">
                         <i class="fas fa-cloud-upload-alt"></i>
+                    </button>
+                    <button class="tool-btn" onclick="cleanupOrphanedRecords()" title="清理孤立记录">
+                        <i class="fas fa-broom"></i>
+                    </button>
+                    <button class="tool-btn" onclick="testDeleteFunction()" title="测试删除功能">
+                        <i class="fas fa-vial"></i>
                     </button>
                     <button class="tool-btn" onclick="saveNote()" title="保存">
                         <i class="fas fa-save"></i>

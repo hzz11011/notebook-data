@@ -47,30 +47,40 @@ let isSavingToSupabase = false;
 document.addEventListener('DOMContentLoaded', function() {
     initializeApp();
     
-    // 修复分类数据（如果需要）
-    fixCategoryData();
-    
     // 初始化 Supabase
-    setTimeout(() => {
+    setTimeout(async () => {
         if (initializeSupabase()) {
             // 初始化 Supabase 数据库表
             initializeSupabaseTables();
             
-            // 自动从 Supabase 加载数据（静默加载）
-            loadFromSupabase(false);
+            // 优先从 Supabase 加载数据，覆盖本地数据
+            console.log('正在从 Supabase 加载最新数据...');
+            
+            // 清除本地存储，确保完全从数据库加载
+            localStorage.removeItem('notes');
+            localStorage.removeItem('categories');
+            localStorage.removeItem('lastEditedNote');
+            
+            // 重置全局变量
+            notes = {};
+            categories = ['默认'];
+            lastEditedNote = null;
+            
+            await loadFromSupabase(false);
             
             // 启动使用量显示
             startUsageAutoRefresh();
         } else {
             console.log('Supabase 初始化失败，使用本地存储');
+            // 修复分类数据（如果需要）
+            fixCategoryData();
+            loadNotes();
+            updateCategorySelect();
+            applyTheme(currentTheme);
             // 即使 Supabase 失败，也显示本地使用量
             startUsageAutoRefresh();
         }
     }, 1000); // 延迟1秒等待 Supabase 库加载
-    
-    loadNotes();
-    updateCategorySelect();
-    applyTheme(currentTheme);
 });
 
 // 初始化应用
@@ -508,6 +518,29 @@ async function saveToSupabase() {
     }
 }
 
+// 强制从数据库加载数据
+async function forceLoadFromDatabase() {
+    if (!supabase) {
+        showNotification('Supabase 未初始化', 'error');
+        return;
+    }
+    
+    showNotification('正在强制从数据库加载数据...', 'info');
+    
+    // 清除本地存储
+    localStorage.removeItem('notes');
+    localStorage.removeItem('categories');
+    localStorage.removeItem('lastEditedNote');
+    
+    // 重置全局变量
+    notes = {};
+    categories = ['默认'];
+    lastEditedNote = null;
+    
+    // 从数据库加载
+    await loadFromSupabase(true);
+}
+
 // 从 Supabase 加载数据
 async function loadFromSupabase(showNotification = true) {
     if (showNotification) {
@@ -539,7 +572,7 @@ async function loadFromSupabase(showNotification = true) {
             console.error('加载设置失败:', settingsError);
         }
         
-        // 更新本地数据
+        // 完全替换本地数据
         if (notesData && notesData.length > 0) {
             const newNotes = {};
             notesData.forEach(note => {
@@ -554,13 +587,20 @@ async function loadFromSupabase(showNotification = true) {
                 };
             });
             
-            // 合并数据
-            notes = { ...notes, ...newNotes };
+            // 完全替换本地数据，不合并
+            notes = newNotes;
+            console.log(`从数据库加载了 ${Object.keys(notes).length} 条笔记`);
+        } else {
+            // 如果数据库没有数据，清空本地数据
+            notes = {};
+            console.log('数据库中没有笔记，清空本地数据');
         }
         
         if (settingsData) {
             if (settingsData.categories) {
-                categories = [...new Set([...categories, ...settingsData.categories])];
+                // 完全替换分类数据，不合并
+                categories = settingsData.categories;
+                console.log(`从数据库加载了分类: ${categories.join(', ')}`);
             }
             if (settingsData.theme) {
                 currentTheme = settingsData.theme;
@@ -568,6 +608,10 @@ async function loadFromSupabase(showNotification = true) {
             if (settingsData.last_edited_note) {
                 lastEditedNote = settingsData.last_edited_note;
             }
+        } else {
+            // 如果数据库没有设置数据，使用默认分类
+            categories = ['默认'];
+            console.log('数据库中没有设置数据，使用默认分类');
         }
         
         // 保存到本地存储
@@ -624,13 +668,27 @@ async function getDatabaseUsage() {
             return null;
         }
         
-        // 获取数据库大小（通过 SQL 查询）
-        const { data: sizeData, error: sizeError } = await supabase
-            .rpc('get_database_size');
-        
+        // 获取数据库大小（通过计算笔记内容大小）
         let dbSize = '未知';
-        if (!sizeError && sizeData) {
-            dbSize = sizeData;
+        try {
+            // 计算所有笔记的总大小
+            const allNotes = Object.values(notes);
+            const totalSize = allNotes.reduce((size, note) => {
+                return size + (note.title ? note.title.length : 0) + 
+                       (note.content ? note.content.length : 0);
+            }, 0);
+            
+            // 转换为可读格式
+            if (totalSize < 1024) {
+                dbSize = `${totalSize} B`;
+            } else if (totalSize < 1024 * 1024) {
+                dbSize = `${(totalSize / 1024).toFixed(1)} KB`;
+            } else {
+                dbSize = `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
+            }
+        } catch (error) {
+            console.error('计算数据库大小失败:', error);
+            dbSize = '计算失败';
         }
         
         return {
@@ -707,6 +765,150 @@ function startUsageAutoRefresh() {
     
     // 每5分钟自动刷新一次
     setInterval(updateUsageDisplay, 5 * 60 * 1000);
+}
+
+// 清理数据库中的孤立记录
+async function cleanupOrphanedRecords() {
+    if (!supabase) {
+        showNotification('Supabase 未初始化，无法清理', 'error');
+        return;
+    }
+    
+    showNotification('正在清理数据库中的孤立记录...', 'info');
+    
+    try {
+        // 获取数据库中的所有笔记
+        const { data: dbNotes, error: fetchError } = await supabase
+            .from('notes')
+            .select('id');
+        
+        if (fetchError) {
+            console.error('获取数据库笔记失败:', fetchError);
+            showNotification('清理失败: ' + fetchError.message, 'error');
+            return;
+        }
+        
+        // 找出本地不存在的笔记ID
+        const localNoteIds = Object.keys(notes);
+        const orphanedIds = dbNotes
+            .map(note => note.id)
+            .filter(id => !localNoteIds.includes(id));
+        
+        if (orphanedIds.length === 0) {
+            showNotification('没有发现孤立记录', 'info');
+            return;
+        }
+        
+        // 删除孤立记录
+        const { error: deleteError } = await supabase
+            .from('notes')
+            .delete()
+            .in('id', orphanedIds);
+        
+        if (deleteError) {
+            console.error('删除孤立记录失败:', deleteError);
+            showNotification('清理失败: ' + deleteError.message, 'error');
+        } else {
+            showNotification(`已清理 ${orphanedIds.length} 条孤立记录`, 'success');
+            console.log('清理的孤立记录ID:', orphanedIds);
+        }
+        
+        // 刷新使用量显示
+        updateUsageDisplay();
+        
+    } catch (error) {
+        console.error('清理孤立记录时出错:', error);
+        showNotification('清理失败: ' + error.message, 'error');
+    }
+}
+
+// 测试删除功能
+async function testDeleteFunction() {
+    if (!supabase) {
+        showNotification('Supabase 未初始化', 'error');
+        return;
+    }
+    
+    console.log('=== 测试删除功能 ===');
+    
+    try {
+        // 1. 检查 Supabase 连接
+        console.log('1. 检查 Supabase 连接...');
+        const { data: testData, error: testError } = await supabase
+            .from('notes')
+            .select('id')
+            .limit(1);
+        
+        if (testError) {
+            console.error('Supabase 连接测试失败:', testError);
+            showNotification(`连接测试失败: ${testError.message}`, 'error');
+            return;
+        }
+        
+        console.log('Supabase 连接正常');
+        
+        // 2. 检查 RLS 策略
+        console.log('2. 检查 RLS 策略...');
+        const { data: allNotes, error: selectError } = await supabase
+            .from('notes')
+            .select('*');
+        
+        if (selectError) {
+            console.error('查询笔记失败:', selectError);
+            showNotification(`查询失败: ${selectError.message}`, 'error');
+            
+            if (selectError.code === 'PGRST301') {
+                showNotification('权限不足，请检查 Supabase RLS 策略设置', 'error');
+            }
+            return;
+        }
+        
+        console.log('查询成功，找到笔记数量:', allNotes.length);
+        
+        // 3. 测试删除权限
+        if (allNotes.length > 0) {
+            console.log('3. 测试删除权限...');
+            const testNoteId = allNotes[0].id;
+            console.log('测试删除笔记ID:', testNoteId);
+            
+            const { data: deleteData, error: deleteError } = await supabase
+                .from('notes')
+                .delete()
+                .eq('id', testNoteId)
+                .select();
+            
+            if (deleteError) {
+                console.error('删除测试失败:', deleteError);
+                showNotification(`删除测试失败: ${deleteError.message}`, 'error');
+                
+                if (deleteError.code === 'PGRST301') {
+                    showNotification('删除权限不足，请检查 Supabase RLS 策略', 'error');
+                }
+            } else {
+                console.log('删除测试成功:', deleteData);
+                showNotification('删除功能正常！', 'success');
+                
+                // 重新创建测试笔记
+                const { error: insertError } = await supabase
+                    .from('notes')
+                    .insert([allNotes[0]]);
+                
+                if (insertError) {
+                    console.error('恢复测试笔记失败:', insertError);
+                } else {
+                    console.log('测试笔记已恢复');
+                }
+            }
+        } else {
+            showNotification('没有笔记可以测试删除功能', 'info');
+        }
+        
+    } catch (error) {
+        console.error('测试删除功能时出错:', error);
+        showNotification(`测试失败: ${error.message}`, 'error');
+    }
+    
+    console.log('=== 测试完成 ===');
 }
 
 // ==================== 云端同步功能 ====================
@@ -1620,10 +1822,49 @@ function updateNoteInList(noteId) {
 }
 
 // 删除笔记
-function deleteNote(noteId) {
+async function deleteNote(noteId) {
     if (confirm('确定要删除这个笔记吗？')) {
+        console.log('开始删除笔记:', noteId);
+        
+        // 从本地删除
         delete notes[noteId];
         saveNotes();
+        console.log('本地笔记已删除');
+        
+        // 从 Supabase 数据库中删除
+        if (supabase) {
+            try {
+                console.log('尝试从 Supabase 删除笔记:', noteId);
+                
+                const { data, error } = await supabase
+                    .from('notes')
+                    .delete()
+                    .eq('id', noteId)
+                    .select();
+                
+                console.log('删除操作结果:', { data, error });
+                
+                if (error) {
+                    console.error('从数据库删除笔记失败:', error);
+                    showNotification(`数据库删除失败: ${error.message}`, 'error');
+                    
+                    if (error.code === 'PGRST301') {
+                        showNotification('权限不足，请检查 Supabase RLS 策略', 'error');
+                    } else if (error.code === 'PGRST116') {
+                        showNotification('笔记在数据库中不存在', 'warning');
+                    }
+                } else {
+                    console.log('笔记已从数据库删除:', data);
+                    showNotification('笔记已完全删除！', 'success');
+                }
+            } catch (error) {
+                console.error('删除笔记时出错:', error);
+                showNotification(`删除出错: ${error.message}`, 'error');
+            }
+        } else {
+            console.error('Supabase 客户端未初始化');
+            showNotification('Supabase 未初始化，仅本地删除', 'warning');
+        }
         
         // 如果删除的是最后编辑的笔记，清除记录
         if (lastEditedNote === noteId) {
@@ -1640,7 +1881,8 @@ function deleteNote(noteId) {
             document.getElementById('editor').style.backgroundColor = '#ffffff';
         }
         
-        showNotification('笔记已删除！', 'info');
+        // 刷新使用量显示
+        updateUsageDisplay();
     }
 }
 
