@@ -668,70 +668,48 @@ async function getDatabaseUsage() {
             return null;
         }
         
-        // 获取数据库大小（通过 Supabase 系统表查询）
+        // 计算用户数据大小（只计算笔记和分类数据）
         let dbSize = '未知';
         let dbSizeBytes = 0;
         try {
-            // 查询数据库大小
-            const { data: sizeData, error: sizeError } = await supabase
-                .rpc('get_database_size');
+            // 计算所有笔记的总大小
+            const allNotes = Object.values(notes);
+            let totalSize = 0;
             
-            if (!sizeError && sizeData) {
-                // 如果 RPC 函数存在，使用它
-                dbSizeBytes = parseFloat(sizeData);
-                if (dbSizeBytes < 1024) {
-                    dbSize = `${dbSizeBytes} B`;
-                } else if (dbSizeBytes < 1024 * 1024) {
-                    dbSize = `${(dbSizeBytes / 1024).toFixed(1)} KB`;
-                } else if (dbSizeBytes < 1024 * 1024 * 1024) {
-                    dbSize = `${(dbSizeBytes / (1024 * 1024)).toFixed(1)} MB`;
-                } else {
-                    dbSize = `${(dbSizeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-                }
+            allNotes.forEach(note => {
+                // 计算每个笔记的JSON字符串大小
+                const noteJson = JSON.stringify(note);
+                totalSize += new Blob([noteJson]).size;
+            });
+            
+            // 添加分类数据的开销
+            const categoriesJson = JSON.stringify(categories);
+            totalSize += new Blob([categoriesJson]).size;
+            
+            // 添加其他用户数据的估算开销（主题、设置等）
+            const settingsJson = JSON.stringify({
+                theme: currentTheme,
+                lastEditedNote: lastEditedNote
+            });
+            totalSize += new Blob([settingsJson]).size;
+            
+            dbSizeBytes = totalSize;
+            
+            // 转换为可读格式
+            if (totalSize < 1024) {
+                dbSize = `${totalSize} B`;
+            } else if (totalSize < 1024 * 1024) {
+                dbSize = `${(totalSize / 1024).toFixed(1)} KB`;
+            } else if (totalSize < 1024 * 1024 * 1024) {
+                dbSize = `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
             } else {
-                // 如果 RPC 函数不存在，使用 SQL 查询
-                const { data: sqlData, error: sqlError } = await supabase
-                    .from('pg_database_size')
-                    .select('*')
-                    .limit(1);
-                
-                if (!sqlError && sqlData) {
-                    dbSizeBytes = parseFloat(sqlData[0]?.size || 0);
-                    if (dbSizeBytes < 1024) {
-                        dbSize = `${dbSizeBytes} B`;
-                    } else if (dbSizeBytes < 1024 * 1024) {
-                        dbSize = `${(dbSizeBytes / 1024).toFixed(1)} KB`;
-                    } else if (dbSizeBytes < 1024 * 1024 * 1024) {
-                        dbSize = `${(dbSizeBytes / (1024 * 1024)).toFixed(1)} MB`;
-                    } else {
-                        dbSize = `${(dbSizeBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-                    }
-                } else {
-                    // 如果都失败，使用本地计算作为备选
-                    const allNotes = Object.values(notes);
-                    let totalSize = 0;
-                    
-                    allNotes.forEach(note => {
-                        const noteJson = JSON.stringify(note);
-                        totalSize += new Blob([noteJson]).size;
-                    });
-                    
-                    const categoriesJson = JSON.stringify(categories);
-                    totalSize += new Blob([categoriesJson]).size;
-                    
-                    dbSizeBytes = totalSize;
-                    if (totalSize < 1024) {
-                        dbSize = `${totalSize} B`;
-                    } else if (totalSize < 1024 * 1024) {
-                        dbSize = `${(totalSize / 1024).toFixed(1)} KB`;
-                    } else {
-                        dbSize = `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
-                    }
-                }
+                dbSize = `${(totalSize / (1024 * 1024 * 1024)).toFixed(2)} GB`;
             }
+            
+            console.log(`用户数据大小: ${dbSize} (${totalSize} 字节)`);
         } catch (error) {
-            console.error('获取数据库大小失败:', error);
-            dbSize = '获取失败';
+            console.error('计算用户数据大小失败:', error);
+            dbSize = '计算失败';
             dbSizeBytes = 0;
         }
         
@@ -765,10 +743,12 @@ async function updateUsageDisplay() {
     document.getElementById('notes-count').textContent = usage.notesCount;
     document.getElementById('db-size').textContent = usage.dbSize;
     
-    // 计算使用率（假设 500MB 限制）
-    const totalLimitBytes = 500 * 1024 * 1024; // 500MB 转换为字节
+    // 计算使用率（基于用户数据，假设 100MB 用户数据限制）
+    const totalLimitBytes = 100 * 1024 * 1024; // 100MB 用户数据限制
     const currentSizeBytes = usage.dbSizeBytes || 0;
     const usagePercentage = Math.min((currentSizeBytes / totalLimitBytes) * 100, 100);
+    
+    console.log(`使用率计算: ${currentSizeBytes} 字节 / ${totalLimitBytes} 字节 = ${usagePercentage.toFixed(1)}%`);
     
     document.getElementById('usage-percentage').textContent = `${usagePercentage.toFixed(1)}%`;
     
