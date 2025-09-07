@@ -3041,10 +3041,25 @@ async function importSharedNote(noteData) {
     showNotification('已导入分享的笔记！', 'success');
 }
 
-// 页面加载完成后处理分享链接
-document.addEventListener('DOMContentLoaded', function() {
-    setTimeout(handleShareUrl, 1000);
-});
+// 页面加载完成后处理分享链接 - 已禁用自动导入
+// document.addEventListener('DOMContentLoaded', function() {
+//     setTimeout(handleShareUrl, 1000);
+// });
+
+// 手动检查分享链接
+async function checkForSharedNote() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const shareId = urlParams.get('share');
+    const importData = urlParams.get('import');
+    
+    if (!shareId && !importData) {
+        showNotification('当前页面没有分享链接', 'info');
+        return;
+    }
+    
+    // 调用原有的处理函数
+    await handleShareUrl();
+}
 
 // 主题切换功能
 function toggleTheme() {

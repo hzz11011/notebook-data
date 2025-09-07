@@ -160,6 +160,9 @@
                     <button class="tool-btn" onclick="restoreFromBackup()" title="从备份恢复">
                         <i class="fas fa-upload"></i>
                     </button>
+                    <button class="tool-btn" onclick="checkForSharedNote()" title="检查分享链接">
+                        <i class="fas fa-link"></i>
+                    </button>
                     <button class="tool-btn" onclick="forceLoadFromDatabase()" title="强制从数据库加载">
                         <i class="fas fa-database"></i>
                     </button>
@@ -267,6 +270,6 @@
     <!-- 背景色选择器 -->
     <input type="color" id="bg-color-picker" style="display: none;" onchange="applyBackgroundColor(this.value)">
 
-    <script src="script.js?v=27&t=20250127&cache=bust"></script>
+    <script src="script.js?v=28&t=20250127&cache=bust"></script>
 </body>
 </html>
