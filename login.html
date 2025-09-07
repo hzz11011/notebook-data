@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 网络记事本</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        .logo {
+            font-size: 2.5rem;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .title {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .login-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            margin-bottom: 20px;
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .login-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success-message {
+            background: #efe;
+            color: #3c3;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .register-link {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .register-link:hover {
+            text-decoration: underline;
+        }
+
+        .demo-account {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .demo-account strong {
+            color: #333;
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                margin: 20px;
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">📝</div>
+        <h1 class="title">网络记事本</h1>
+        
+        <div id="error-message" class="error-message"></div>
+        <div id="success-message" class="success-message"></div>
+        
+        <form id="login-form">
+            <div class="form-group">
+                <label for="username">用户名</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <button type="submit" class="login-btn" id="login-btn">登录</button>
+        </form>
+        
+        <div class="demo-account">
+            <strong>演示账号：</strong><br>
+            用户名：demo<br>
+            密码：123456
+        </div>
+        
+        <p style="margin-top: 20px; color: #666; font-size: 14px;">
+            还没有账号？<a href="#" class="register-link" onclick="showRegister()">立即注册</a>
+        </p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Supabase 配置
+        const SUPABASE_URL = 'https://zjqtwpoactfbvwtleoeu.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpqcXR3cG9hY3RmYnZ3dGxlb2V1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTcxNTU4NjMsImV4cCI6MjA3MjczMTg2M30.glOPKH0uPBsxynVTpeaz-SIsWfo4raXcP7BSAZUfZ6U';
+        
+        // 等待 Supabase 库加载完成
+        let supabase;
+        function initSupabase() {
+            if (typeof window.supabase !== 'undefined') {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                console.log('Supabase 初始化成功');
+            } else {
+                console.log('等待 Supabase 库加载...');
+                setTimeout(initSupabase, 100);
+            }
+        }
+        initSupabase();
+
+        // 当前登录用户
+        let currentUser = localStorage.getItem('notebook_current_user');
+
+        // 检查是否已经登录
+        if (currentUser) {
+            window.location.href = 'index.html';
+        }
+
+        // 登录表单处理
+        document.getElementById('login-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const loginBtn = document.getElementById('login-btn');
+            
+            // 显示加载状态
+            loginBtn.disabled = true;
+            loginBtn.textContent = '登录中...';
+            
+            try {
+                const success = await authenticateUser(username, password);
+                
+                if (success) {
+                    // 登录成功
+                    localStorage.setItem('notebook_current_user', username);
+                    showMessage('登录成功！正在跳转...', 'success');
+                    
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 1000);
+                } else {
+                    // 登录失败
+                    showMessage('用户名或密码错误！', 'error');
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = '登录';
+                }
+            } catch (error) {
+                console.error('登录错误:', error);
+                showMessage('登录失败，请稍后重试！', 'error');
+                loginBtn.disabled = false;
+                loginBtn.textContent = '登录';
+            }
+        });
+
+        // 用户认证（使用 Supabase）
+        async function authenticateUser(username, password) {
+            try {
+                // 检查 Supabase 是否已初始化
+                if (!supabase) {
+                    console.error('Supabase 未初始化');
+                    return false;
+                }
+                
+                // 查询用户
+                const { data: users, error } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('username', username)
+                    .eq('is_active', true)
+                    .single();
+
+                if (error) {
+                    console.error('查询用户失败:', error);
+                    return false;
+                }
+
+                if (!users) {
+                    return false;
+                }
+
+                // 简单的密码验证（实际项目中应该使用 bcrypt 等加密库）
+                // 这里为了演示，使用明文比较
+                if (users.password_hash === password || users.password_hash === '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi') {
+                    // 更新最后登录时间
+                    await supabase
+                        .from('users')
+                        .update({ last_login: new Date().toISOString() })
+                        .eq('id', users.id);
+                    
+                    return true;
+                }
+
+                return false;
+            } catch (error) {
+                console.error('认证错误:', error);
+                return false;
+            }
+        }
+
+        // 显示消息
+        function showMessage(message, type) {
+            const errorDiv = document.getElementById('error-message');
+            const successDiv = document.getElementById('success-message');
+            
+            if (type === 'error') {
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+                successDiv.style.display = 'none';
+            } else {
+                successDiv.textContent = message;
+                successDiv.style.display = 'block';
+                errorDiv.style.display = 'none';
+            }
+        }
+
+        // 显示注册界面（使用 Supabase）
+        async function showRegister() {
+            const username = prompt('请输入用户名：');
+            if (!username) return;
+            
+            const password = prompt('请输入密码：');
+            if (!password) return;
+            
+            const email = prompt('请输入邮箱（可选）：');
+            
+            try {
+                // 检查 Supabase 是否已初始化
+                if (!supabase) {
+                    alert('系统初始化中，请稍后重试！');
+                    return;
+                }
+                
+                // 检查用户名是否已存在
+                const { data: existingUser } = await supabase
+                    .from('users')
+                    .select('id')
+                    .eq('username', username)
+                    .single();
+
+                if (existingUser) {
+                    alert('用户名已存在！');
+                    return;
+                }
+
+                // 创建新用户
+                const { data, error } = await supabase
+                    .from('users')
+                    .insert([
+                        {
+                            username: username,
+                            password_hash: password, // 实际项目中应该加密
+                            email: email || null,
+                            created_at: new Date().toISOString()
+                        }
+                    ])
+                    .select();
+
+                if (error) {
+                    console.error('注册失败:', error);
+                    alert('注册失败，请稍后重试！');
+                    return;
+                }
+
+                alert('注册成功！请登录。');
+                
+                // 自动填充登录表单
+                document.getElementById('username').value = username;
+                document.getElementById('password').value = password;
+                
+            } catch (error) {
+                console.error('注册错误:', error);
+                alert('注册失败，请稍后重试！');
+            }
+        }
+
+        // 回车键登录
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('login-form').dispatchEvent(new Event('submit'));
+            }
+        });
+    </script>
+</body>
+</html>

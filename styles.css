@@ -67,6 +67,36 @@ body {
     font-weight: 600;
 }
 
+.user-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 8px 12px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.user-info span {
+    color: white;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.logout-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.logout-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
 .sidebar-actions {
     display: flex;
     gap: 8px;
@@ -185,6 +215,60 @@ body {
 
 .category-toggle:hover {
     background: rgba(0, 0, 0, 0.1);
+}
+
+/* 分类操作按钮样式 */
+.category-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.category-edit-btn,
+.category-delete-btn {
+    background: none;
+    border: none;
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    opacity: 0.6;
+    font-size: 12px;
+}
+
+.category-edit-btn:hover {
+    background: rgba(52, 152, 219, 0.2);
+    color: #3498db;
+    opacity: 1;
+}
+
+.category-delete-btn:hover {
+    background: rgba(231, 76, 60, 0.2);
+    color: #e74c3c;
+    opacity: 1;
+}
+
+.category:hover .category-edit-btn,
+.category:hover .category-delete-btn {
+    opacity: 0.8;
+}
+
+.category.active .category-edit-btn,
+.category.active .category-delete-btn {
+    color: white;
+    opacity: 0.8;
+}
+
+.category.active .category-edit-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    opacity: 1;
+}
+
+.category.active .category-delete-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #ff6b6b;
+    opacity: 1;
 }
 
 .category-name i:first-child {

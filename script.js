@@ -1,7 +1,78 @@
 // 全局变量
+console.log('=== 记事本脚本已加载 v10 ===');
+
+// 检查登录状态
+async function checkLoginStatus() {
+    const currentUser = localStorage.getItem('notebook_current_user');
+    if (!currentUser) {
+        window.location.href = 'login.html';
+        return false;
+    }
+    
+    // 验证用户是否仍然有效（可选）
+    try {
+        // 等待 Supabase 初始化完成
+        if (typeof supabase !== 'undefined' && supabase) {
+            const { data, error } = await supabase
+                .from('users')
+                .select('id, is_active')
+                .eq('username', currentUser)
+                .eq('is_active', true)
+                .single();
+            
+            if (error || !data) {
+                // 用户不存在或已被禁用
+                localStorage.removeItem('notebook_current_user');
+                window.location.href = 'login.html';
+                return false;
+            }
+        }
+    } catch (error) {
+        console.error('验证用户状态失败:', error);
+        // 网络错误时允许继续使用
+    }
+    
+    return true;
+}
+
+// 页面加载时检查登录状态
+document.addEventListener('DOMContentLoaded', function() {
+    // 检查是否已登录
+    const currentUser = localStorage.getItem('notebook_current_user');
+    console.log('当前用户:', currentUser);
+    
+    if (!currentUser) {
+        // 未登录，跳转到登录页面
+        console.log('未登录，跳转到登录页面');
+        window.location.href = 'login.html';
+        return;
+    }
+    
+    // 已登录，初始化应用
+    console.log('已登录，初始化应用');
+    initializeAppAfterLogin();
+});
+
+// 显示当前用户
+function displayCurrentUser() {
+    const currentUser = localStorage.getItem('notebook_current_user');
+    const userElement = document.getElementById('current-user');
+    if (userElement && currentUser) {
+        userElement.textContent = currentUser;
+    }
+}
+
+// 退出登录
+function logout() {
+    if (confirm('确定要退出登录吗？')) {
+        localStorage.removeItem('notebook_current_user');
+        window.location.href = 'login.html';
+    }
+}
+
 let currentNote = null;
-let notes = JSON.parse(localStorage.getItem('notes')) || {};
-let categories = JSON.parse(localStorage.getItem('categories')) || ['默认'];
+let notes = {};
+let categories = ['默认'];
 let currentCategory = '默认';
 let currentTheme = localStorage.getItem('theme') || 'light';
 let autoSaveTimer = null;
@@ -43,9 +114,46 @@ let giteeConfig = {
 let isSavingToGitee = false;
 let isSavingToSupabase = false;
 
+// 登录后初始化应用
+function initializeAppAfterLogin() {
+    // 显示当前用户
+    displayCurrentUser();
+    
+    // 加载用户数据
+    loadUserData();
+    
+    // 初始化应用
+    initializeApp();
+}
+
+// 加载用户数据
+function loadUserData() {
+    const currentUser = localStorage.getItem('notebook_current_user');
+    if (!currentUser) return;
+    
+    // 从 localStorage 加载用户特定的数据
+    const userNotes = localStorage.getItem(`notes_${currentUser}`);
+    const userCategories = localStorage.getItem(`categories_${currentUser}`);
+    const userLastEditedNote = localStorage.getItem(`lastEditedNote_${currentUser}`);
+    
+    if (userNotes) {
+        notes = JSON.parse(userNotes);
+    }
+    
+    if (userCategories) {
+        categories = JSON.parse(userCategories);
+    } else {
+        categories = ['默认'];
+    }
+    
+    if (userLastEditedNote) {
+        lastEditedNote = userLastEditedNote;
+    }
+}
+
 // 初始化应用
 document.addEventListener('DOMContentLoaded', function() {
-    initializeApp();
+    // 登录检查已经在上面处理了
     
     // 初始化 Supabase
     setTimeout(async () => {
@@ -57,9 +165,12 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('正在从 Supabase 加载最新数据...');
             
             // 清除本地存储，确保完全从数据库加载
-            localStorage.removeItem('notes');
-            localStorage.removeItem('categories');
-            localStorage.removeItem('lastEditedNote');
+            const currentUser = localStorage.getItem('notebook_current_user');
+            if (currentUser) {
+                localStorage.removeItem(`notes_${currentUser}`);
+                localStorage.removeItem(`categories_${currentUser}`);
+                localStorage.removeItem(`lastEditedNote_${currentUser}`);
+            }
             
             // 重置全局变量
             notes = {};
@@ -207,8 +318,16 @@ function createCategoryElement(categoryName) {
                 <i class="fas fa-folder"></i>
                 <span>${categoryName}</span>
             </div>
-            <div class="category-toggle" onclick="toggleCategory('${categoryName}')">
-                <i class="fas fa-chevron-down"></i>
+            <div class="category-actions">
+                <button class="category-edit-btn" onclick="event.stopPropagation(); editCategoryName('${categoryName}')" title="重命名分类">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="category-delete-btn" onclick="event.stopPropagation(); deleteCategory('${categoryName}')" title="删除分类">
+                    <i class="fas fa-trash"></i>
+                </button>
+                <div class="category-toggle" onclick="toggleCategory('${categoryName}')">
+                    <i class="fas fa-chevron-down"></i>
+                </div>
             </div>
         </div>
         <div class="category-notes" id="notes-${categoryName}">
@@ -232,6 +351,151 @@ function createCategoryElement(categoryName) {
 // 获取指定分类的笔记
 function getNotesByCategory(category) {
     return Object.values(notes).filter(note => note.category === category);
+}
+
+// ==================== 分类管理功能 ====================
+
+// 编辑分类名称
+function editCategoryName(oldCategoryName) {
+    if (oldCategoryName === '默认') {
+        showNotification('默认分类不能重命名！', 'warning');
+        return;
+    }
+    
+    const newCategoryName = prompt('请输入新的分类名称:', oldCategoryName);
+    
+    if (!newCategoryName || newCategoryName.trim() === '') {
+        return;
+    }
+    
+    const trimmedName = newCategoryName.trim();
+    
+    // 检查新名称是否已存在
+    if (categories.includes(trimmedName)) {
+        showNotification('分类名称已存在！', 'error');
+        return;
+    }
+    
+    // 检查名称长度
+    if (trimmedName.length > 20) {
+        showNotification('分类名称不能超过20个字符！', 'error');
+        return;
+    }
+    
+    try {
+        // 更新分类数组
+        const categoryIndex = categories.indexOf(oldCategoryName);
+        if (categoryIndex !== -1) {
+            categories[categoryIndex] = trimmedName;
+        }
+        
+        // 更新所有相关笔记的分类
+        Object.values(notes).forEach(note => {
+            if (note.category === oldCategoryName) {
+                note.category = trimmedName;
+                note.updatedAt = new Date().toISOString();
+            }
+        });
+        
+        // 更新当前分类
+        if (currentCategory === oldCategoryName) {
+            currentCategory = trimmedName;
+        }
+        
+        // 保存数据
+        saveNotes();
+        saveCategories();
+        
+        // 同步到数据库
+        if (typeof saveToSupabase === 'function') {
+            saveToSupabase().then(() => {
+                console.log('分类重命名已同步到数据库');
+            }).catch(error => {
+                console.error('同步到数据库失败:', error);
+            });
+        }
+        
+        // 更新界面
+        loadNotes();
+        updateCategorySelect();
+        
+        showNotification(`分类"${oldCategoryName}"已重命名为"${trimmedName}"`, 'success');
+        
+        console.log(`分类重命名: ${oldCategoryName} -> ${trimmedName}`);
+        
+    } catch (error) {
+        console.error('重命名分类失败:', error);
+        showNotification('重命名失败: ' + error.message, 'error');
+    }
+}
+
+// 删除分类
+function deleteCategory(categoryName) {
+    if (categoryName === '默认') {
+        showNotification('默认分类不能删除！', 'warning');
+        return;
+    }
+    
+    // 检查分类下是否有笔记
+    const categoryNotes = getNotesByCategory(categoryName);
+    
+    if (categoryNotes.length > 0) {
+        const confirmMessage = `分类"${categoryName}"下还有 ${categoryNotes.length} 条笔记，删除分类将把这些笔记移动到"默认"分类。\n\n确定要删除这个分类吗？`;
+        
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+        
+        // 将笔记移动到默认分类
+        categoryNotes.forEach(note => {
+            note.category = '默认';
+            note.updatedAt = new Date().toISOString();
+        });
+        
+        showNotification(`已将 ${categoryNotes.length} 条笔记移动到"默认"分类`, 'info');
+    } else {
+        if (!confirm(`确定要删除分类"${categoryName}"吗？`)) {
+            return;
+        }
+    }
+    
+    try {
+        // 从分类数组中移除
+        const categoryIndex = categories.indexOf(categoryName);
+        if (categoryIndex !== -1) {
+            categories.splice(categoryIndex, 1);
+        }
+        
+        // 更新当前分类
+        if (currentCategory === categoryName) {
+            currentCategory = '默认';
+        }
+        
+        // 保存数据
+        saveNotes();
+        saveCategories();
+        
+        // 同步到数据库
+        if (typeof saveToSupabase === 'function') {
+            saveToSupabase().then(() => {
+                console.log('分类删除已同步到数据库');
+            }).catch(error => {
+                console.error('同步到数据库失败:', error);
+            });
+        }
+        
+        // 更新界面
+        loadNotes();
+        updateCategorySelect();
+        
+        showNotification(`分类"${categoryName}"已删除`, 'success');
+        
+        console.log(`分类已删除: ${categoryName}`);
+        
+    } catch (error) {
+        console.error('删除分类失败:', error);
+        showNotification('删除失败: ' + error.message, 'error');
+    }
 }
 
 // 获取笔记预览文本
@@ -342,6 +606,17 @@ function addCategory() {
         const newCategoryName = categoryName.trim();
         categories.push(newCategoryName);
         saveCategories();
+        
+        // 同步到 Supabase 数据库
+        if (typeof saveToSupabase === 'function') {
+            saveToSupabase().then(() => {
+                console.log('新分类已同步到数据库');
+            }).catch(error => {
+                console.error('同步到数据库失败:', error);
+                showNotification('分类已创建，但同步到数据库失败', 'warning');
+            });
+        }
+        
         createCategoryElement(newCategoryName);
         updateCategorySelect();
         
@@ -418,9 +693,29 @@ function updateCategoryDisplay(categoryName) {
     });
 }
 
+// 更新左侧分类选择状态
+function updateLeftSidebarCategorySelection(categoryName) {
+    // 清除所有分类的活动状态
+    document.querySelectorAll('.category').forEach(cat => {
+        cat.classList.remove('active');
+    });
+    
+    // 设置指定分类为活动状态
+    const categoryElement = document.querySelector(`[data-category="${categoryName}"]`);
+    if (categoryElement) {
+        categoryElement.classList.add('active');
+    }
+    
+    // 更新当前分类变量
+    currentCategory = categoryName;
+}
+
 // 从下拉菜单选择分类
 function selectCategoryFromDropdown(categoryName) {
     updateCategoryDisplay(categoryName);
+    
+    // 更新左侧分类选择状态
+    updateLeftSidebarCategorySelection(categoryName);
     
     // 触发分类变更事件
     handleCategoryChange();
@@ -428,7 +723,10 @@ function selectCategoryFromDropdown(categoryName) {
 
 // 保存分类数据
 function saveCategories() {
-    localStorage.setItem('categories', JSON.stringify(categories));
+    const currentUser = localStorage.getItem('notebook_current_user');
+    if (currentUser) {
+        localStorage.setItem(`categories_${currentUser}`, JSON.stringify(categories));
+    }
 }
 
 // ==================== Supabase 数据库功能 ====================
@@ -475,11 +773,19 @@ async function saveToSupabase() {
     
     try {
         // 保存所有笔记
+        const currentUser = localStorage.getItem('notebook_current_user');
         for (const [noteId, note] of Object.entries(notes)) {
+            console.log('保存笔记到 Supabase:', noteId, {
+                title: note.title,
+                content: note.content,
+                category: note.category
+            });
+            
             const { error } = await supabase
                 .from('notes')
                 .upsert({
                     id: noteId,
+                    user_id: currentUser,
                     title: note.title,
                     content: note.content,
                     category: note.category,
@@ -490,14 +796,25 @@ async function saveToSupabase() {
             
             if (error) {
                 console.error('保存笔记失败:', noteId, error);
+            } else {
+                console.log('笔记保存成功:', noteId);
             }
         }
         
         // 保存分类
+        console.log('保存分类到 Supabase:', {
+            id: `categories_${currentUser}`,
+            user_id: currentUser,
+            categories: categories,
+            theme: currentTheme,
+            last_edited_note: lastEditedNote
+        });
+        
         const { error: categoryError } = await supabase
             .from('categories')
             .upsert({
-                id: 'default',
+                id: `categories_${currentUser}`,
+                user_id: currentUser,
                 categories: categories,
                 theme: currentTheme,
                 last_edited_note: lastEditedNote,
@@ -506,6 +823,8 @@ async function saveToSupabase() {
         
         if (categoryError) {
             console.error('保存分类失败:', categoryError);
+        } else {
+            console.log('分类保存成功');
         }
         
         console.log('数据已保存到 Supabase');
@@ -528,9 +847,12 @@ async function forceLoadFromDatabase() {
     showNotification('正在强制从数据库加载数据...', 'info');
     
     // 清除本地存储
-    localStorage.removeItem('notes');
-    localStorage.removeItem('categories');
-    localStorage.removeItem('lastEditedNote');
+    const currentUser = localStorage.getItem('notebook_current_user');
+    if (currentUser) {
+        localStorage.removeItem(`notes_${currentUser}`);
+        localStorage.removeItem(`categories_${currentUser}`);
+        localStorage.removeItem(`lastEditedNote_${currentUser}`);
+    }
     
     // 重置全局变量
     notes = {};
@@ -549,9 +871,11 @@ async function loadFromSupabase(showNotification = true) {
     
     try {
         // 加载笔记
+        const currentUser = localStorage.getItem('notebook_current_user');
         const { data: notesData, error: notesError } = await supabase
             .from('notes')
-            .select('*');
+            .select('*')
+            .eq('user_id', currentUser);
         
         if (notesError) {
             console.error('加载笔记失败:', notesError);
@@ -565,7 +889,7 @@ async function loadFromSupabase(showNotification = true) {
         const { data: settingsData, error: settingsError } = await supabase
             .from('categories')
             .select('*')
-            .eq('id', 'default')
+            .eq('id', `categories_${currentUser}`)
             .single();
         
         if (settingsError && settingsError.code !== 'PGRST116') { // PGRST116 表示没有找到记录
@@ -618,7 +942,9 @@ async function loadFromSupabase(showNotification = true) {
         saveNotes();
         saveCategories();
         localStorage.setItem('theme', currentTheme);
-        localStorage.setItem('lastEditedNote', lastEditedNote);
+        if (currentUser) {
+            localStorage.setItem(`lastEditedNote_${currentUser}`, lastEditedNote);
+        }
         
         // 更新界面
         loadNotes();
@@ -790,150 +1116,6 @@ function startUsageAutoRefresh() {
     
     // 每5分钟自动刷新一次
     setInterval(updateUsageDisplay, 5 * 60 * 1000);
-}
-
-// 清理数据库中的孤立记录
-async function cleanupOrphanedRecords() {
-    if (!supabase) {
-        showNotification('Supabase 未初始化，无法清理', 'error');
-        return;
-    }
-    
-    showNotification('正在清理数据库中的孤立记录...', 'info');
-    
-    try {
-        // 获取数据库中的所有笔记
-        const { data: dbNotes, error: fetchError } = await supabase
-            .from('notes')
-            .select('id');
-        
-        if (fetchError) {
-            console.error('获取数据库笔记失败:', fetchError);
-            showNotification('清理失败: ' + fetchError.message, 'error');
-            return;
-        }
-        
-        // 找出本地不存在的笔记ID
-        const localNoteIds = Object.keys(notes);
-        const orphanedIds = dbNotes
-            .map(note => note.id)
-            .filter(id => !localNoteIds.includes(id));
-        
-        if (orphanedIds.length === 0) {
-            showNotification('没有发现孤立记录', 'info');
-            return;
-        }
-        
-        // 删除孤立记录
-        const { error: deleteError } = await supabase
-            .from('notes')
-            .delete()
-            .in('id', orphanedIds);
-        
-        if (deleteError) {
-            console.error('删除孤立记录失败:', deleteError);
-            showNotification('清理失败: ' + deleteError.message, 'error');
-        } else {
-            showNotification(`已清理 ${orphanedIds.length} 条孤立记录`, 'success');
-            console.log('清理的孤立记录ID:', orphanedIds);
-        }
-        
-        // 刷新使用量显示
-        updateUsageDisplay();
-        
-    } catch (error) {
-        console.error('清理孤立记录时出错:', error);
-        showNotification('清理失败: ' + error.message, 'error');
-    }
-}
-
-// 测试删除功能
-async function testDeleteFunction() {
-    if (!supabase) {
-        showNotification('Supabase 未初始化', 'error');
-        return;
-    }
-    
-    console.log('=== 测试删除功能 ===');
-    
-    try {
-        // 1. 检查 Supabase 连接
-        console.log('1. 检查 Supabase 连接...');
-        const { data: testData, error: testError } = await supabase
-            .from('notes')
-            .select('id')
-            .limit(1);
-        
-        if (testError) {
-            console.error('Supabase 连接测试失败:', testError);
-            showNotification(`连接测试失败: ${testError.message}`, 'error');
-            return;
-        }
-        
-        console.log('Supabase 连接正常');
-        
-        // 2. 检查 RLS 策略
-        console.log('2. 检查 RLS 策略...');
-        const { data: allNotes, error: selectError } = await supabase
-            .from('notes')
-            .select('*');
-        
-        if (selectError) {
-            console.error('查询笔记失败:', selectError);
-            showNotification(`查询失败: ${selectError.message}`, 'error');
-            
-            if (selectError.code === 'PGRST301') {
-                showNotification('权限不足，请检查 Supabase RLS 策略设置', 'error');
-            }
-            return;
-        }
-        
-        console.log('查询成功，找到笔记数量:', allNotes.length);
-        
-        // 3. 测试删除权限
-        if (allNotes.length > 0) {
-            console.log('3. 测试删除权限...');
-            const testNoteId = allNotes[0].id;
-            console.log('测试删除笔记ID:', testNoteId);
-            
-            const { data: deleteData, error: deleteError } = await supabase
-                .from('notes')
-                .delete()
-                .eq('id', testNoteId)
-                .select();
-            
-            if (deleteError) {
-                console.error('删除测试失败:', deleteError);
-                showNotification(`删除测试失败: ${deleteError.message}`, 'error');
-                
-                if (deleteError.code === 'PGRST301') {
-                    showNotification('删除权限不足，请检查 Supabase RLS 策略', 'error');
-                }
-            } else {
-                console.log('删除测试成功:', deleteData);
-                showNotification('删除功能正常！', 'success');
-                
-                // 重新创建测试笔记
-                const { error: insertError } = await supabase
-                    .from('notes')
-                    .insert([allNotes[0]]);
-                
-                if (insertError) {
-                    console.error('恢复测试笔记失败:', insertError);
-                } else {
-                    console.log('测试笔记已恢复');
-                }
-            }
-        } else {
-            showNotification('没有笔记可以测试删除功能', 'info');
-        }
-        
-    } catch (error) {
-        console.error('测试删除功能时出错:', error);
-        showNotification(`测试失败: ${error.message}`, 'error');
-    }
-    
-    console.log('=== 测试完成 ===');
 }
 
 // ==================== 云端同步功能 ====================
@@ -1273,7 +1455,10 @@ async function syncFromCloud() {
             saveNotes();
             saveCategories();
             localStorage.setItem('theme', currentTheme);
-            localStorage.setItem('lastEditedNote', lastEditedNote);
+            const currentUser = localStorage.getItem('notebook_current_user');
+        if (currentUser) {
+            localStorage.setItem(`lastEditedNote_${currentUser}`, lastEditedNote);
+        }
             
             // 更新界面
             loadNotes();
@@ -1571,7 +1756,10 @@ async function loadFromGitee(showNotification = true) {
                 saveNotes();
                 saveCategories();
                 localStorage.setItem('theme', currentTheme);
-                localStorage.setItem('lastEditedNote', lastEditedNote);
+                const currentUser = localStorage.getItem('notebook_current_user');
+        if (currentUser) {
+            localStorage.setItem(`lastEditedNote_${currentUser}`, lastEditedNote);
+        }
                 
                 // 更新界面
                 loadNotes();
@@ -1611,11 +1799,15 @@ function createNewNote() {
         backgroundColor: '#ffffff'
     };
     
+    console.log('创建新笔记:', noteId, newNote);
     notes[noteId] = newNote;
     currentNote = noteId;
     
     // 保存为最后编辑的笔记
-    localStorage.setItem('lastEditedNote', noteId);
+    const currentUser = localStorage.getItem('notebook_current_user');
+    if (currentUser) {
+        localStorage.setItem(`lastEditedNote_${currentUser}`, noteId);
+    }
     lastEditedNote = noteId;
     
     // 清空并更新UI
@@ -1624,6 +1816,9 @@ function createNewNote() {
     
     // 更新分类显示
     updateCategoryDisplay(currentCategory);
+    
+    // 更新左侧分类选择状态
+    updateLeftSidebarCategorySelection(currentCategory);
     
     // 重置背景色
     document.getElementById('editor').style.backgroundColor = '#ffffff';
@@ -1664,7 +1859,10 @@ function loadNote(noteId) {
     const note = notes[noteId];
     
     // 保存为最后编辑的笔记
-    localStorage.setItem('lastEditedNote', noteId);
+    const currentUser = localStorage.getItem('notebook_current_user');
+    if (currentUser) {
+        localStorage.setItem(`lastEditedNote_${currentUser}`, noteId);
+    }
     lastEditedNote = noteId;
     
     // 更新UI
@@ -1690,8 +1888,8 @@ function loadNote(noteId) {
         noteItem.classList.add('active');
     }
     
-    // 不更新左侧分类选择状态，保持用户之前选择的分类
-    // 右侧下拉框显示当前笔记的分类，左侧保持用户选择的分类
+    // 更新左侧分类选择状态，使其与右侧保持一致
+    updateLeftSidebarCategorySelection(note.category || '默认');
     
     // 显示保存状态
     updateSaveStatus('saved');
@@ -1829,7 +2027,10 @@ function saveNote() {
 
 // 保存所有笔记数据
 function saveNotes() {
-    localStorage.setItem('notes', JSON.stringify(notes));
+    const currentUser = localStorage.getItem('notebook_current_user');
+    if (currentUser) {
+        localStorage.setItem(`notes_${currentUser}`, JSON.stringify(notes));
+    }
 }
 
 // 更新笔记列表中的显示
@@ -2018,6 +2219,13 @@ function generateQR() {
         return;
     }
     
+    // 检查 QRCode 库是否加载
+    if (typeof QRCode === 'undefined') {
+        console.error('QRCode 库未加载，直接使用文本二维码...');
+        generateTextQR();
+        return;
+    }
+    
     const note = notes[currentNote];
     const noteData = {
         title: note.title,
@@ -2033,29 +2241,238 @@ function generateQR() {
     const canvas = document.createElement('canvas');
     qrContainer.appendChild(canvas);
     
-    QRCode.toCanvas(canvas, dataString, {
-        width: 200,
-        height: 200,
-        color: {
-            dark: '#000000',
-            light: '#FFFFFF'
+    try {
+        QRCode.toCanvas(canvas, dataString, {
+            width: 200,
+            height: 200,
+            color: {
+                dark: '#000000',
+                light: '#FFFFFF'
+            }
+        }, function (error) {
+            if (error) {
+                console.error('二维码生成失败:', error);
+                showNotification('二维码生成失败！', 'error');
+                return;
+            }
+            
+            const modalBody = document.getElementById('modal-body');
+            modalBody.innerHTML = `
+                <h3>笔记二维码</h3>
+                <p>扫描二维码可以查看笔记内容</p>
+                ${qrContainer.outerHTML}
+                <button class="copy-btn" onclick="copyQRData()">复制数据</button>
+            `;
+            
+            showModal();
+        });
+    } catch (error) {
+        console.error('二维码生成异常:', error);
+        showNotification('二维码生成失败！', 'error');
+    }
+}
+
+// 使用 API 生成二维码（备用方案）
+function generateQRWithAPI() {
+    if (!currentNote || !notes[currentNote]) {
+        showNotification('请先选择一个笔记！', 'warning');
+        return;
+    }
+    
+    const note = notes[currentNote];
+    const noteData = {
+        title: note.title,
+        content: note.content,
+        category: note.category,
+        createdAt: note.createdAt
+    };
+    
+    const dataString = JSON.stringify(noteData);
+    
+    // 尝试多个 API 服务
+    const apis = [
+        `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataString)}`,
+        `https://chart.googleapis.com/chart?chs=200x200&cht=qr&chl=${encodeURIComponent(dataString)}`,
+        `https://qr-server.com/api/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataString)}`
+    ];
+    
+    const modalBody = document.getElementById('modal-body');
+    modalBody.innerHTML = `
+        <h3>笔记二维码</h3>
+        <p>扫描二维码可以查看笔记内容</p>
+        <div class="qr-container" style="text-align: center;">
+            <div id="qr-loading">正在生成二维码...</div>
+            <img id="qr-image" style="display: none; max-width: 200px; height: auto;" onerror="tryNextAPI()">
+        </div>
+        <button class="copy-btn" onclick="copyQRData()">复制数据</button>
+        <button class="copy-btn" onclick="generateTextQR()" style="margin-left: 10px;">文本二维码</button>
+    `;
+    
+    showModal();
+    
+    // 直接显示文本二维码（避免网络问题）
+    setTimeout(() => {
+        const qrLoading = document.getElementById('qr-loading');
+        if (qrLoading) {
+            qrLoading.innerHTML = '网络连接失败，显示文本二维码：';
+            generateTextQR();
         }
-    }, function (error) {
-        if (error) {
-            console.error('二维码生成失败:', error);
-            showNotification('二维码生成失败！', 'error');
-            return;
+    }, 2000);
+}
+
+// 下载二维码
+function downloadQR() {
+    if (!currentNote || !notes[currentNote]) return;
+    
+    const note = notes[currentNote];
+    const noteData = {
+        title: note.title,
+        content: note.content,
+        category: note.category,
+        createdAt: note.createdAt
+    };
+    
+    const dataString = JSON.stringify(noteData);
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(dataString)}`;
+    
+    const link = document.createElement('a');
+    link.href = qrUrl;
+    link.download = `qrcode_${note.title || 'note'}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showNotification('二维码下载成功！', 'success');
+}
+
+// 生成可用的二维码
+function generateTextQR() {
+    if (!currentNote || !notes[currentNote]) {
+        showNotification('请先选择一个笔记！', 'warning');
+        return;
+    }
+    
+    const note = notes[currentNote];
+    const noteData = {
+        title: note.title,
+        content: note.content,
+        category: note.category,
+        createdAt: note.createdAt
+    };
+    
+    const dataString = JSON.stringify(noteData);
+    
+    // 创建分享链接
+    const shareUrl = createShareUrl(noteData);
+    
+    const modalBody = document.getElementById('modal-body');
+    modalBody.innerHTML = `
+        <h3>笔记分享</h3>
+        <p>选择以下方式分享您的笔记：</p>
+        <div class="qr-container" style="text-align: center;">
+            <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                <h4>分享链接：</h4>
+                <input type="text" readonly value="${shareUrl}" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 12px;" onclick="this.select()">
+                <p style="font-size: 12px; color: #666; margin: 10px 0;">点击链接复制，发送给他人即可查看笔记</p>
+            </div>
+            
+            <div style="background: #e8f4fd; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                <h4>在线生成二维码：</h4>
+                <p style="font-size: 14px; margin: 10px 0;">复制上面的链接，然后访问以下网站生成二维码：</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
+                    <a href="https://www.qrcode-monkey.com/" target="_blank" style="background: #007bff; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none; font-size: 12px;">QR Code Monkey</a>
+                    <a href="https://www.qr-code-generator.com/" target="_blank" style="background: #28a745; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none; font-size: 12px;">QR Code Generator</a>
+                    <a href="https://qr.liantu.com/" target="_blank" style="background: #ffc107; color: black; padding: 8px 16px; border-radius: 5px; text-decoration: none; font-size: 12px;">联图网</a>
+                </div>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                <h4>笔记数据：</h4>
+                <textarea readonly style="width: 100%; height: 120px; font-family: monospace; font-size: 11px; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">${dataString}</textarea>
+                <p style="font-size: 12px; color: #666; margin: 10px 0;">这是笔记的原始数据，可以用于备份或导入</p>
+            </div>
+        </div>
+        <button class="copy-btn" onclick="copyShareUrl()">复制分享链接</button>
+        <button class="copy-btn" onclick="copyQRData()" style="margin-left: 10px;">复制数据</button>
+    `;
+    
+    showModal();
+}
+
+// 创建分享链接
+function createShareUrl(noteData) {
+    const encodedData = encodeURIComponent(JSON.stringify(noteData));
+    return `${window.location.origin}${window.location.pathname}?import=${encodedData}`;
+}
+
+// 复制分享链接
+function copyShareUrl() {
+    if (!currentNote || !notes[currentNote]) return;
+    
+    const note = notes[currentNote];
+    const noteData = {
+        title: note.title,
+        content: note.content,
+        category: note.category,
+        createdAt: note.createdAt
+    };
+    
+    const shareUrl = createShareUrl(noteData);
+    
+    navigator.clipboard.writeText(shareUrl).then(() => {
+        showNotification('分享链接已复制到剪贴板！', 'success');
+    }).catch(() => {
+        showNotification('复制失败，请手动复制！', 'error');
+    });
+}
+
+// 创建简单的文本二维码
+function createTextQR(text) {
+    // 简单的文本二维码生成（ASCII 艺术）
+    const lines = [];
+    const width = 40;
+    const height = 20;
+    
+    // 创建边框
+    lines.push('█'.repeat(width + 2));
+    
+    // 添加内容行
+    for (let i = 0; i < height; i++) {
+        let line = '█';
+        for (let j = 0; j < width; j++) {
+            // 简单的模式生成
+            const charIndex = (i * width + j) % text.length;
+            const charCode = text.charCodeAt(charIndex);
+            line += (charCode % 2 === 0) ? '█' : ' ';
         }
-        
-        const modalBody = document.getElementById('modal-body');
-        modalBody.innerHTML = `
-            <h3>笔记二维码</h3>
-            <p>扫描二维码可以查看笔记内容</p>
-            ${qrContainer.outerHTML}
-            <button class="copy-btn" onclick="copyQRData()">复制数据</button>
-        `;
-        
-        showModal();
+        line += '█';
+        lines.push(line);
+    }
+    
+    lines.push('█'.repeat(width + 2));
+    
+    return lines.join('\n');
+}
+
+// 复制文本二维码
+function copyTextQR() {
+    if (!currentNote || !notes[currentNote]) return;
+    
+    const note = notes[currentNote];
+    const noteData = {
+        title: note.title,
+        content: note.content,
+        category: note.category,
+        createdAt: note.createdAt
+    };
+    
+    const dataString = JSON.stringify(noteData);
+    const qrText = createTextQR(dataString);
+    
+    navigator.clipboard.writeText(qrText).then(() => {
+        showNotification('文本二维码已复制到剪贴板！', 'success');
+    }).catch(() => {
+        showNotification('复制失败，请手动复制！', 'error');
     });
 }
 
@@ -2552,51 +2969,561 @@ function exportNotes() {
     showNotification('笔记已导出！', 'success');
 }
 
-// 导入笔记功能
-function importNotes() {
+// ==================== 备份恢复功能 ====================
+
+// 备份所有数据（包括用户信息、笔记、分类、设置等）
+function backupAllData() {
+    const currentUser = localStorage.getItem('notebook_current_user');
+    if (!currentUser) {
+        showNotification('请先登录！', 'error');
+        return;
+    }
+    
+    if (Object.keys(notes).length === 0 && categories.length === 0) {
+        showNotification('没有数据可以备份！', 'warning');
+        return;
+    }
+    
+    try {
+        // 收集所有需要备份的数据
+        const backupData = {
+            // 基本信息
+            user: currentUser,
+            backupDate: new Date().toISOString(),
+            version: '2.0.0',
+            backupType: 'full_backup',
+            
+            // 笔记数据
+            notes: notes,
+            categories: categories,
+            lastEditedNote: lastEditedNote,
+            
+            // 用户设置
+            settings: {
+                theme: currentTheme,
+                fontSize: document.documentElement.style.fontSize || '16px',
+                fontFamily: document.documentElement.style.fontFamily || 'Arial, sans-serif'
+            },
+            
+            // 统计信息
+            statistics: {
+                totalNotes: Object.keys(notes).length,
+                totalCategories: categories.length,
+                backupSize: JSON.stringify(notes).length + JSON.stringify(categories).length
+            }
+        };
+        
+        // 生成备份文件名
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+        const filename = `notebook_full_backup_${currentUser}_${timestamp}.json`;
+        
+        // 创建并下载备份文件
+        const dataStr = JSON.stringify(backupData, null, 2);
+        const dataBlob = new Blob([dataStr], {type: 'application/json'});
+        
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(dataBlob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // 显示备份成功信息
+        const stats = backupData.statistics;
+        showNotification(`备份成功！包含 ${stats.totalNotes} 条笔记，${stats.totalCategories} 个分类`, 'success');
+        
+        console.log('备份完成:', {
+            user: currentUser,
+            notes: stats.totalNotes,
+            categories: stats.totalCategories,
+            size: Math.round(stats.backupSize / 1024) + ' KB'
+        });
+        
+    } catch (error) {
+        console.error('备份失败:', error);
+        showNotification('备份失败: ' + error.message, 'error');
+    }
+}
+
+// 从备份文件恢复数据
+function restoreFromBackup() {
+    const currentUser = localStorage.getItem('notebook_current_user');
+    if (!currentUser) {
+        showNotification('请先登录！', 'error');
+        return;
+    }
+    
+    // 确认恢复操作
+    if (!confirm('恢复备份将覆盖当前所有数据，确定要继续吗？\n\n建议先备份当前数据！')) {
+        return;
+    }
+    
+    // 创建文件输入元素
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
+    input.style.display = 'none';
+    
+    input.onchange = function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const backupData = JSON.parse(e.target.result);
+                
+                // 验证备份文件格式
+                if (!validateBackupFile(backupData)) {
+                    showNotification('备份文件格式不正确！', 'error');
+                    return;
+                }
+                
+                // 执行恢复操作
+                restoreDataFromBackup(backupData, currentUser);
+                
+            } catch (error) {
+                console.error('解析备份文件失败:', error);
+                showNotification('备份文件解析失败: ' + error.message, 'error');
+            }
+        };
+        
+        reader.readAsText(file);
+    };
+    
+    document.body.appendChild(input);
+    input.click();
+    document.body.removeChild(input);
+}
+
+// 验证备份文件格式
+function validateBackupFile(backupData) {
+    const requiredFields = ['user', 'backupDate', 'version', 'notes', 'categories'];
+    
+    for (const field of requiredFields) {
+        if (!(field in backupData)) {
+            console.error('备份文件缺少必要字段:', field);
+            return false;
+        }
+    }
+    
+    // 检查数据类型
+    if (typeof backupData.notes !== 'object' || !Array.isArray(backupData.categories)) {
+        console.error('备份文件数据类型不正确');
+        return false;
+    }
+    
+    return true;
+}
+
+// 从备份数据恢复
+async function restoreDataFromBackup(backupData, currentUser) {
+    try {
+        showNotification('正在恢复数据...', 'info');
+        
+        // 1. 恢复笔记数据
+        if (backupData.notes && Object.keys(backupData.notes).length > 0) {
+            notes = backupData.notes;
+            console.log('恢复笔记:', Object.keys(notes).length, '条');
+        }
+        
+        // 2. 恢复分类数据
+        if (backupData.categories && backupData.categories.length > 0) {
+            categories = backupData.categories;
+            console.log('恢复分类:', categories.length, '个');
+        }
+        
+        // 3. 恢复最后编辑的笔记
+        if (backupData.lastEditedNote) {
+            lastEditedNote = backupData.lastEditedNote;
+        }
+        
+        // 4. 恢复用户设置
+        if (backupData.settings) {
+            if (backupData.settings.theme) {
+                currentTheme = backupData.settings.theme;
+                applyTheme(currentTheme);
+            }
+            if (backupData.settings.fontSize) {
+                document.documentElement.style.fontSize = backupData.settings.fontSize;
+            }
+            if (backupData.settings.fontFamily) {
+                document.documentElement.style.fontFamily = backupData.settings.fontFamily;
+            }
+        }
+        
+        // 5. 保存到本地存储
+        saveNotes();
+        saveCategories();
+        
+        // 6. 保存到 Supabase 数据库
+        if (typeof saveToSupabase === 'function') {
+            console.log('正在同步到数据库...');
+            const result = await saveToSupabase();
+            if (result && result.success) {
+                console.log('数据已同步到数据库');
+            } else {
+                console.warn('同步到数据库失败:', result?.error);
+            }
+        }
+        
+        // 7. 更新界面
+        loadNotes();
+        updateCategorySelect();
+        updateUsageDisplay();
+        
+        // 8. 显示恢复成功信息
+        const stats = backupData.statistics || {};
+        showNotification(`恢复成功！恢复了 ${stats.totalNotes || Object.keys(notes).length} 条笔记，${stats.totalCategories || categories.length} 个分类`, 'success');
+        
+        console.log('恢复完成:', {
+            user: currentUser,
+            notes: Object.keys(notes).length,
+            categories: categories.length,
+            backupDate: backupData.backupDate
+        });
+        
+    } catch (error) {
+        console.error('恢复数据失败:', error);
+        showNotification('恢复失败: ' + error.message, 'error');
+    }
+}
+
+// 导入笔记功能
+function importNotes() {
+    console.log('=== 导入功能已更新 v3 ===');
+    importNotesNew();
+}
+
+// 新的导入功能
+function importNotesNew() {
+    console.log('=== 使用新的导入函数 ===');
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,.md,.txt';
     input.onchange = function(e) {
         const file = e.target.files[0];
         if (file) {
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
-                    const importData = JSON.parse(e.target.result);
+                    const fileName = file.name.toLowerCase();
+                    const fileExtension = fileName.split('.').pop();
+                    const fileContent = e.target.result;
                     
-                    if (importData.notes && importData.categories) {
-                        // 合并数据
-                        Object.assign(notes, importData.notes);
-                        categories = [...new Set([...categories, ...importData.categories])];
+                    console.log('文件信息:', {
+                        originalName: file.name,
+                        fileName: fileName,
+                        fileExtension: fileExtension,
+                        contentLength: fileContent.length,
+                        contentPreview: fileContent.substring(0, 100)
+                    });
+                    
+                    // 强制检查文件扩展名
+                    console.log('=== 新函数：判断文件类型 ===', fileExtension);
+                    if (fileExtension !== 'json' && fileExtension !== 'md' && fileExtension !== 'txt') {
+                        console.log('不支持的文件格式:', fileExtension);
+                        showNotification('不支持的文件格式！', 'error');
+                        return;
+                    }
+                    
+                    if (fileExtension === 'json') {
+                        console.log('=== 新函数：处理 JSON 文件 ===');
+                        // 导入 JSON 格式（原有功能）
+                        const importData = JSON.parse(fileContent);
                         
-                        saveNotes();
-                        saveCategories();
-                        loadNotes();
-                        updateCategorySelect();
-                        
-                        // 如果有导入的笔记，选择最新的一个作为最后编辑的笔记
-                        if (Object.keys(importData.notes).length > 0) {
-                            const latestNote = Object.values(importData.notes).reduce((latest, note) => {
-                                return new Date(note.updatedAt) > new Date(latest.updatedAt) ? note : latest;
-                            });
-                            localStorage.setItem('lastEditedNote', latestNote.id);
-                            lastEditedNote = latestNote.id;
+                        if (importData.notes && importData.categories) {
+                            // 合并数据
+                            Object.assign(notes, importData.notes);
+                            categories = [...new Set([...categories, ...importData.categories])];
+                            
+                            saveNotes();
+                            saveCategories();
+                            loadNotes();
+                            updateCategorySelect();
+                            
+                            // 如果有导入的笔记，选择最新的一个作为最后编辑的笔记
+                            if (Object.keys(importData.notes).length > 0) {
+                                const latestNote = Object.values(importData.notes).reduce((latest, note) => {
+                                    return new Date(note.updatedAt) > new Date(latest.updatedAt) ? note : latest;
+                                });
+                                localStorage.setItem('lastEditedNote', latestNote.id);
+                                lastEditedNote = latestNote.id;
+                            }
+                            
+                            showNotification('JSON 笔记导入成功！', 'success');
+                        } else {
+                            showNotification('JSON 文件格式不正确！', 'error');
                         }
-                        
-                        showNotification('笔记导入成功！', 'success');
+                    } else if (fileExtension === 'md' || fileExtension === 'txt') {
+                        console.log('=== 新函数：处理 MD/TXT 文件 ===', fileExtension);
+                        // 导入 MD 或 TXT 格式
+                        importMarkdownOrTextFile(fileContent, file.name, fileExtension);
                     } else {
-                        showNotification('文件格式不正确！', 'error');
+                        showNotification('不支持的文件格式！', 'error');
                     }
                 } catch (error) {
                     console.error('导入失败:', error);
                     showNotification('文件解析失败！', 'error');
                 }
             };
-            reader.readAsText(file);
+            reader.readAsText(file, 'UTF-8');
         }
     };
     input.click();
+}
+
+// 全新的导入功能 V2
+function importNotesV2() {
+    console.log('=== 全新导入功能 V2 ===');
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,.md,.txt';
+    input.onchange = function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const fileName = file.name.toLowerCase();
+                    const fileExtension = fileName.split('.').pop();
+                    const fileContent = e.target.result;
+                    
+                    console.log('=== V2 文件信息 ===', {
+                        originalName: file.name,
+                        fileName: fileName,
+                        fileExtension: fileExtension,
+                        contentLength: fileContent.length,
+                        contentPreview: fileContent.substring(0, 100)
+                    });
+                    
+                    // 只处理 TXT 和 MD 文件
+                    if (fileExtension === 'txt' || fileExtension === 'md') {
+                        console.log('=== V2 处理文本文件 ===', fileExtension);
+                        importTextFileV2(fileContent, file.name, fileExtension);
+                    } else if (fileExtension === 'json') {
+                        console.log('=== V2 处理 JSON 文件 ===');
+                        try {
+                            const importData = JSON.parse(fileContent);
+                            if (importData.notes && importData.categories) {
+                                Object.assign(notes, importData.notes);
+                                categories = [...new Set([...categories, ...importData.categories])];
+                                saveNotes();
+                                saveCategories();
+                                
+                                // 保存到 Supabase 数据库
+                                if (typeof saveToSupabase === 'function') {
+                                    console.log('开始保存 JSON 导入的笔记到 Supabase...');
+                                    saveToSupabase().then((result) => {
+                                        console.log('JSON 导入的笔记已保存到 Supabase:', result);
+                                    }).catch(error => {
+                                        console.error('保存到 Supabase 失败:', error);
+                                        showNotification('保存到数据库失败，请检查网络连接', 'error');
+                                    });
+                                } else {
+                                    console.error('saveToSupabase 函数不存在');
+                                }
+                                
+                                loadNotes();
+                                updateCategorySelect();
+                                showNotification('JSON 笔记导入成功！', 'success');
+                            } else {
+                                showNotification('JSON 文件格式不正确！', 'error');
+                            }
+                        } catch (jsonError) {
+                            console.error('JSON 解析失败:', jsonError);
+                            showNotification('JSON 文件解析失败！', 'error');
+                        }
+                    } else {
+                        showNotification('不支持的文件格式！', 'error');
+                    }
+                } catch (error) {
+                    console.error('V2 导入失败:', error);
+                    showNotification('文件导入失败！', 'error');
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+    };
+    input.click();
+}
+
+// 新的文本文件处理函数
+function importTextFileV2(content, fileName, fileExtension) {
+    try {
+        console.log('=== V2 开始处理文本文件 ===', fileName, fileExtension);
+        
+        // 从文件名提取标题
+        const title = fileName.replace(/\.[^/.]+$/, '');
+        console.log('提取的标题:', title);
+        
+        // 转换内容
+        let convertedContent;
+        if (fileExtension === 'txt') {
+            // 纯文本：将换行符转换为 <br> 标签
+            convertedContent = content
+                .replace(/\r\n/g, '\n')
+                .replace(/\r/g, '\n')
+                .replace(/\n/g, '<br>');
+        } else if (fileExtension === 'md') {
+            // Markdown：简单的 Markdown 转 HTML
+            convertedContent = convertMarkdownToHtmlSimple(content);
+        }
+        
+        console.log('转换后的内容长度:', convertedContent.length);
+        
+        // 创建新笔记
+        const noteId = 'imported_v2_' + Date.now();
+        const newNote = {
+            id: noteId,
+            title: title,
+            content: convertedContent,
+            category: currentCategory,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            backgroundColor: '#ffffff'
+        };
+        
+        console.log('创建的新笔记:', newNote);
+        
+        // 添加到笔记列表
+        notes[noteId] = newNote;
+        
+        // 保存并更新界面
+        saveNotes();
+        
+        // 保存到 Supabase 数据库
+        if (typeof saveToSupabase === 'function') {
+            console.log('开始保存导入的笔记到 Supabase...');
+            console.log('当前用户:', localStorage.getItem('notebook_current_user'));
+            console.log('Supabase 客户端状态:', supabase ? '已初始化' : '未初始化');
+            
+            saveToSupabase().then((result) => {
+                console.log('导入的笔记已保存到 Supabase:', result);
+                if (result && result.success) {
+                    showNotification('导入的笔记已保存到数据库', 'success');
+                } else {
+                    showNotification('保存到数据库失败: ' + (result?.error || '未知错误'), 'error');
+                }
+            }).catch(error => {
+                console.error('保存到 Supabase 失败:', error);
+                showNotification('保存到数据库失败，请检查网络连接', 'error');
+            });
+        } else {
+            console.error('saveToSupabase 函数不存在');
+        }
+        
+        loadNotes();
+        updateCategorySelect();
+        
+        // 加载新导入的笔记
+        loadNote(noteId);
+        
+        showNotification(`${fileExtension.toUpperCase()} 文件导入成功！`, 'success');
+        
+    } catch (error) {
+        console.error('V2 文本文件导入失败:', error);
+        showNotification('文件导入失败！', 'error');
+    }
+}
+
+// 导入 Markdown 或文本文件
+function importMarkdownOrTextFile(content, fileName, fileExtension) {
+    try {
+        console.log('开始导入文件:', fileName, '类型:', fileExtension);
+        console.log('文件内容长度:', content.length);
+        
+        // 从文件名提取标题（去掉扩展名）
+        const title = fileName.replace(/\.[^/.]+$/, '');
+        console.log('提取的标题:', title);
+        
+        // 转换内容
+        const convertedContent = convertMarkdownToHtml(content, fileExtension);
+        console.log('转换后的内容长度:', convertedContent.length);
+        
+        // 创建新笔记
+        const noteId = 'imported_' + Date.now();
+        const newNote = {
+            id: noteId,
+            title: title,
+            content: convertedContent,
+            category: currentCategory,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            backgroundColor: '#ffffff'
+        };
+        
+        console.log('创建的新笔记:', newNote);
+        
+        // 添加到笔记列表
+        notes[noteId] = newNote;
+        
+        // 保存并更新界面
+        saveNotes();
+        loadNotes();
+        updateCategorySelect();
+        
+        // 加载新导入的笔记
+        loadNote(noteId);
+        
+        showNotification(`${fileExtension.toUpperCase()} 文件导入成功！`, 'success');
+        
+    } catch (error) {
+        console.error('导入文件失败:', error);
+        showNotification('文件导入失败！', 'error');
+    }
+}
+
+// 将 Markdown 或文本转换为 HTML
+function convertMarkdownToHtml(content, fileExtension) {
+    if (fileExtension === 'txt') {
+        // 纯文本：将换行符转换为 <br> 标签
+        return content
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n')
+            .replace(/\n/g, '<br>');
+    } else if (fileExtension === 'md') {
+        // Markdown：简单的 Markdown 转 HTML
+        return convertMarkdownToHtmlSimple(content);
+    }
+    return content;
+}
+
+// 简单的 Markdown 转 HTML 转换器
+function convertMarkdownToHtmlSimple(markdown) {
+    let html = markdown;
+    
+    // 处理标题
+    html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+    html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+    html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+    
+    // 处理粗体和斜体
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    
+    // 处理代码块
+    html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+    html = html.replace(/`(.*?)`/g, '<code>$1</code>');
+    
+    // 处理链接
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    
+    // 处理列表
+    html = html.replace(/^\* (.*$)/gim, '<li>$1</li>');
+    html = html.replace(/^- (.*$)/gim, '<li>$1</li>');
+    html = html.replace(/^(\d+)\. (.*$)/gim, '<li>$2</li>');
+    
+    // 处理换行
+    html = html.replace(/\n\n/g, '</p><p>');
+    html = html.replace(/\n/g, '<br>');
+    
+    // 包装段落
+    if (!html.startsWith('<')) {
+        html = '<p>' + html + '</p>';
+    }
+    
+    return html;
 }
 
 // 字体选择器功能

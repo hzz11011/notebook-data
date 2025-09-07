@@ -6,7 +6,35 @@
     <title>网络记事本</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script>
+        // 检查 QRCode 库加载状态
+        window.addEventListener('load', function() {
+            if (typeof QRCode === 'undefined') {
+                console.log('主 CDN 加载失败，尝试备用 CDN...');
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js';
+                script.onload = function() {
+                    console.log('备用 QRCode 库加载成功');
+                };
+                script.onerror = function() {
+                    console.error('备用 QRCode 库也加载失败，尝试第三个 CDN...');
+                    const script2 = document.createElement('script');
+                    script2.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js';
+                    script2.onload = function() {
+                        console.log('第三个 CDN 加载成功');
+                    };
+                    script2.onerror = function() {
+                        console.error('所有 CDN 都加载失败');
+                    };
+                    document.head.appendChild(script2);
+                };
+                document.head.appendChild(script);
+            } else {
+                console.log('QRCode 库加载成功');
+            }
+        });
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -15,6 +43,12 @@
         <div class="sidebar">
             <div class="sidebar-header">
                 <h2><i class="fas fa-book"></i> 我的记事本</h2>
+                <div class="user-info">
+                    <span id="current-user">用户</span>
+                    <button class="logout-btn" onclick="logout()" title="退出登录">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </div>
                 <div class="sidebar-actions">
                     <button class="add-note-btn" onclick="createNewNote()">
                         <i class="fas fa-plus"></i> 新建笔记
@@ -22,7 +56,7 @@
                     <button class="add-category-btn" onclick="addCategory()">
                         <i class="fas fa-folder-plus"></i> 新建分类
                     </button>
-                    <button class="import-btn" onclick="importNotes()" title="导入笔记">
+                    <button class="import-btn" onclick="importNotesV2()" title="导入笔记 (支持 JSON, MD, TXT)">
                         <i class="fas fa-upload"></i>
                     </button>
                 </div>
@@ -120,17 +154,17 @@
                     <button class="tool-btn" onclick="exportNotes()" title="导出">
                         <i class="fas fa-download"></i>
                     </button>
+                    <button class="tool-btn" onclick="backupAllData()" title="备份所有数据">
+                        <i class="fas fa-archive"></i>
+                    </button>
+                    <button class="tool-btn" onclick="restoreFromBackup()" title="从备份恢复">
+                        <i class="fas fa-upload"></i>
+                    </button>
                     <button class="tool-btn" onclick="forceLoadFromDatabase()" title="强制从数据库加载">
                         <i class="fas fa-database"></i>
                     </button>
                     <button class="tool-btn" onclick="saveToSupabase()" title="保存到 Supabase">
                         <i class="fas fa-cloud-upload-alt"></i>
-                    </button>
-                    <button class="tool-btn" onclick="cleanupOrphanedRecords()" title="清理孤立记录">
-                        <i class="fas fa-broom"></i>
-                    </button>
-                    <button class="tool-btn" onclick="testDeleteFunction()" title="测试删除功能">
-                        <i class="fas fa-vial"></i>
                     </button>
                     <button class="tool-btn" onclick="saveNote()" title="保存">
                         <i class="fas fa-save"></i>
@@ -233,6 +267,6 @@
     <!-- 背景色选择器 -->
     <input type="color" id="bg-color-picker" style="display: none;" onchange="applyBackgroundColor(this.value)">
 
-    <script src="script.js"></script>
+    <script src="script.js?v=23&t=20250127&cache=bust"></script>
 </body>
 </html>
