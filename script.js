@@ -3057,6 +3057,38 @@ async function checkForSharedNote() {
         return;
     }
     
+    // 如果是短链接，先检查数据库中的数据
+    if (shareId) {
+        try {
+            console.log('检查分享ID:', shareId);
+            const { data, error } = await supabase
+                .from('shared_notes')
+                .select('*')
+                .eq('id', shareId)
+                .single();
+            
+            if (error) {
+                console.error('查询分享数据失败:', error);
+                showNotification('分享链接不存在或已过期', 'error');
+                return;
+            }
+            
+            if (data) {
+                console.log('找到分享数据:', data);
+                console.log('笔记标题:', data.note_data.title);
+                console.log('笔记内容:', data.note_data.content);
+                console.log('创建时间:', data.created_at);
+                console.log('过期时间:', data.expires_at);
+                
+                // 显示详细信息
+                const info = `分享ID: ${shareId}\n标题: ${data.note_data.title}\n创建时间: ${new Date(data.created_at).toLocaleString()}\n过期时间: ${new Date(data.expires_at).toLocaleString()}\n访问次数: ${data.access_count}`;
+                alert(info);
+            }
+        } catch (error) {
+            console.error('检查分享数据失败:', error);
+        }
+    }
+    
     // 调用原有的处理函数
     await handleShareUrl();
 }
