@@ -2961,10 +2961,19 @@ async function handleShareUrl() {
                 }
                 
                 const noteData = data.note_data;
-                await importSharedNote(noteData);
                 
-                // 更新访问计数
-                await supabase.rpc('increment_access_count', { share_id: shareId });
+                // 显示导入确认对话框
+                const confirmImport = confirm(`发现分享的笔记："${noteData.title}"\n\n是否要导入到你的笔记本中？`);
+                if (confirmImport) {
+                    await importSharedNote(noteData);
+                    
+                    // 更新访问计数
+                    await supabase.rpc('increment_access_count', { share_id: shareId });
+                } else {
+                    // 用户选择不导入，清除URL参数
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    return;
+                }
                 
             } else {
                 showNotification('无法加载分享内容，请稍后重试', 'error');
@@ -2977,7 +2986,16 @@ async function handleShareUrl() {
         // 处理旧的长链接格式（兼容性）
         try {
             const noteData = JSON.parse(decodeURIComponent(importData));
-            await importSharedNote(noteData);
+            
+            // 显示导入确认对话框
+            const confirmImport = confirm(`发现分享的笔记："${noteData.title}"\n\n是否要导入到你的笔记本中？`);
+            if (confirmImport) {
+                await importSharedNote(noteData);
+            } else {
+                // 用户选择不导入，清除URL参数
+                window.history.replaceState({}, document.title, window.location.pathname);
+                return;
+            }
         } catch (error) {
             console.error('解析分享数据失败:', error);
             showNotification('分享链接无效！', 'error');
