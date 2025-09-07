@@ -3045,18 +3045,30 @@ async function importSharedNote(noteData) {
         
         if (titleInput) {
             titleInput.value = newNote.title;
+            console.log('设置标题:', newNote.title);
         }
         
         if (contentDiv) {
             contentDiv.innerHTML = newNote.content;
+            console.log('设置内容:', newNote.content.substring(0, 100) + '...');
+        }
+        
+        // 强制更新当前选中的笔记
+        currentNoteId = noteId;
+        
+        // 更新笔记选择器
+        const noteSelector = document.getElementById('note-selector');
+        if (noteSelector) {
+            noteSelector.value = noteId;
         }
         
         console.log('分享笔记已加载:', {
             noteId: noteId,
             title: newNote.title,
-            content: newNote.content.substring(0, 100) + '...'
+            content: newNote.content.substring(0, 100) + '...',
+            currentNoteId: currentNoteId
         });
-    }, 100);
+    }, 200);
     
     showNotification('已导入分享的笔记！', 'success');
 }
@@ -3103,14 +3115,40 @@ async function checkForSharedNote() {
                 // 显示详细信息
                 const info = `分享ID: ${shareId}\n标题: ${data.note_data.title}\n创建时间: ${new Date(data.created_at).toLocaleString()}\n过期时间: ${new Date(data.expires_at).toLocaleString()}\n访问次数: ${data.access_count}`;
                 alert(info);
+                
+                // 直接处理导入，不调用 handleShareUrl
+                const confirmImport = confirm(`发现分享的笔记："${data.note_data.title}"\n\n是否要导入到你的笔记本中？`);
+                if (confirmImport) {
+                    await importSharedNote(data.note_data);
+                    
+                    // 更新访问计数
+                    await supabase.rpc('increment_access_count', { share_id: shareId });
+                    
+                    // 清除URL参数
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
             }
         } catch (error) {
             console.error('检查分享数据失败:', error);
         }
+    } else if (importData) {
+        // 处理旧的长链接格式
+        try {
+            const noteData = JSON.parse(decodeURIComponent(importData));
+            
+            // 显示导入确认对话框
+            const confirmImport = confirm(`发现分享的笔记："${noteData.title}"\n\n是否要导入到你的笔记本中？`);
+            if (confirmImport) {
+                await importSharedNote(noteData);
+                
+                // 清除URL参数
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        } catch (error) {
+            console.error('解析分享数据失败:', error);
+            showNotification('分享链接无效！', 'error');
+        }
     }
-    
-    // 调用原有的处理函数
-    await handleShareUrl();
 }
 
 // 主题切换功能
