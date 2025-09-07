@@ -3034,9 +3034,29 @@ async function importSharedNote(noteData) {
         }
     }
     
-    // 加载笔记
+    // 加载笔记到编辑器
     loadNote(noteId);
     loadNotes();
+    
+    // 确保编辑器显示正确的内容
+    setTimeout(() => {
+        const titleInput = document.getElementById('note-title');
+        const contentDiv = document.getElementById('note-content');
+        
+        if (titleInput) {
+            titleInput.value = newNote.title;
+        }
+        
+        if (contentDiv) {
+            contentDiv.innerHTML = newNote.content;
+        }
+        
+        console.log('分享笔记已加载:', {
+            noteId: noteId,
+            title: newNote.title,
+            content: newNote.content.substring(0, 100) + '...'
+        });
+    }, 100);
     
     showNotification('已导入分享的笔记！', 'success');
 }
