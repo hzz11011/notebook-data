@@ -2363,9 +2363,8 @@ function generateTextQR() {
     const dataString = JSON.stringify(noteData);
     
     // 创建分享链接
-    const shareUrl = createShareUrl(noteData);
-    
-    const modalBody = document.getElementById('modal-body');
+    createShareUrl(noteData).then(shareUrl => {
+        const modalBody = document.getElementById('modal-body');
     modalBody.innerHTML = `
         <h3>笔记分享</h3>
         <p>选择以下方式分享您的笔记：</p>
@@ -2397,16 +2396,75 @@ function generateTextQR() {
     `;
     
     showModal();
+    }).catch(error => {
+        console.error('创建分享链接失败:', error);
+        showNotification('创建分享链接失败', 'error');
+    });
 }
 
-// 创建分享链接
-function createShareUrl(noteData) {
+// 创建分享链接（优化版本）
+async function createShareUrl(noteData) {
+    try {
+        // 生成短分享ID
+        const shareId = generateShareId();
+        
+        // 将分享数据存储到数据库
+        if (supabase) {
+            console.log('尝试保存分享数据到数据库...', { shareId, noteData });
+            
+            const { error } = await supabase
+                .from('shared_notes')
+                .insert({
+                    id: shareId,
+                    note_data: noteData,
+                    created_at: new Date().toISOString(),
+                    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30天后过期
+                });
+            
+            if (error) {
+                console.error('保存分享数据失败:', error);
+                console.log('回退到长链接方式');
+                // 如果数据库保存失败，回退到原来的方式
+                return createShareUrlFallback(noteData);
+            } else {
+                console.log('分享数据保存成功');
+            }
+        } else {
+            console.log('Supabase 不可用，回退到长链接方式');
+            // 如果 Supabase 不可用，回退到原来的方式
+            return createShareUrlFallback(noteData);
+        }
+        
+        // 返回短链接
+        const shortUrl = `${window.location.origin}${window.location.pathname}?share=${shareId}`;
+        console.log('生成短链接:', shortUrl);
+        return shortUrl;
+        
+    } catch (error) {
+        console.error('创建分享链接失败:', error);
+        // 出错时回退到原来的方式
+        return createShareUrlFallback(noteData);
+    }
+}
+
+// 回退方案：原来的长链接方式
+function createShareUrlFallback(noteData) {
     const encodedData = encodeURIComponent(JSON.stringify(noteData));
     return `${window.location.origin}${window.location.pathname}?import=${encodedData}`;
 }
 
+// 生成短分享ID
+function generateShareId() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < 8; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+}
+
 // 复制分享链接
-function copyShareUrl() {
+async function copyShareUrl() {
     if (!currentNote || !notes[currentNote]) return;
     
     const note = notes[currentNote];
@@ -2417,13 +2475,18 @@ function copyShareUrl() {
         createdAt: note.createdAt
     };
     
-    const shareUrl = createShareUrl(noteData);
-    
-    navigator.clipboard.writeText(shareUrl).then(() => {
-        showNotification('分享链接已复制到剪贴板！', 'success');
-    }).catch(() => {
-        showNotification('复制失败，请手动复制！', 'error');
-    });
+    try {
+        const shareUrl = await createShareUrl(noteData);
+        
+        navigator.clipboard.writeText(shareUrl).then(() => {
+            showNotification('分享链接已复制到剪贴板！', 'success');
+        }).catch(() => {
+            showNotification('复制失败，请手动复制！', 'error');
+        });
+    } catch (error) {
+        console.error('创建分享链接失败:', error);
+        showNotification('创建分享链接失败', 'error');
+    }
 }
 
 // 创建简单的文本二维码
@@ -2876,42 +2939,88 @@ function refreshCategories() {
 }
 
 // 处理分享链接
-function handleShareUrl() {
+async function handleShareUrl() {
     const urlParams = new URLSearchParams(window.location.search);
-    const shareData = urlParams.get('share');
+    const shareId = urlParams.get('share');
+    const importData = urlParams.get('import'); // 兼容旧的长链接格式
     
-    if (shareData) {
+    if (shareId) {
+        // 处理新的短链接格式
         try {
-            const noteData = JSON.parse(decodeURIComponent(shareData));
-            
-            // 创建新笔记
-            const noteId = 'shared_' + Date.now();
-            const newNote = {
-                id: noteId,
-                title: noteData.title || '分享的笔记',
-                content: noteData.content || '',
-                category: noteData.category || '默认',
-                createdAt: noteData.createdAt || new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                backgroundColor: '#ffffff'
-            };
-            
-            notes[noteId] = newNote;
-            saveNotes();
-            
-            // 加载笔记
-            loadNote(noteId);
-            loadNotes();
-            
-            showNotification('已导入分享的笔记！', 'success');
-            
-            // 清除URL参数
-            window.history.replaceState({}, document.title, window.location.pathname);
+            if (supabase) {
+                const { data, error } = await supabase
+                    .from('shared_notes')
+                    .select('note_data')
+                    .eq('id', shareId)
+                    .gt('expires_at', new Date().toISOString())
+                    .single();
+                
+                if (error || !data) {
+                    showNotification('分享链接已过期或不存在！', 'error');
+                    return;
+                }
+                
+                const noteData = data.note_data;
+                await importSharedNote(noteData);
+                
+                // 更新访问计数
+                await supabase.rpc('increment_access_count', { share_id: shareId });
+                
+            } else {
+                showNotification('无法加载分享内容，请稍后重试', 'error');
+            }
+        } catch (error) {
+            console.error('加载分享内容失败:', error);
+            showNotification('分享链接无效！', 'error');
+        }
+    } else if (importData) {
+        // 处理旧的长链接格式（兼容性）
+        try {
+            const noteData = JSON.parse(decodeURIComponent(importData));
+            await importSharedNote(noteData);
         } catch (error) {
             console.error('解析分享数据失败:', error);
             showNotification('分享链接无效！', 'error');
         }
     }
+    
+    // 清除URL参数
+    if (shareId || importData) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+}
+
+// 导入分享的笔记
+async function importSharedNote(noteData) {
+    // 创建新笔记
+    const noteId = 'shared_' + Date.now();
+    const newNote = {
+        id: noteId,
+        title: noteData.title || '分享的笔记',
+        content: noteData.content || '',
+        category: noteData.category || '默认',
+        createdAt: noteData.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        backgroundColor: noteData.backgroundColor || '#ffffff'
+    };
+    
+    notes[noteId] = newNote;
+    saveNotes();
+    
+    // 同步到数据库
+    if (typeof saveToSupabase === 'function') {
+        try {
+            await saveToSupabase();
+        } catch (error) {
+            console.error('同步到数据库失败:', error);
+        }
+    }
+    
+    // 加载笔记
+    loadNote(noteId);
+    loadNotes();
+    
+    showNotification('已导入分享的笔记！', 'success');
 }
 
 // 页面加载完成后处理分享链接
