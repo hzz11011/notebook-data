@@ -775,7 +775,10 @@ async function saveToSupabase() {
     
     if (!supabase) {
         console.error('Supabase 客户端未初始化');
-        showNotification('Supabase 未初始化，无法保存', 'error');
+        // 在本地测试环境下不显示错误提示
+        if (window.location.protocol !== 'file:') {
+            showNotification('Supabase 未初始化，无法保存', 'error');
+        }
         return { success: false, error: 'Supabase 未初始化' };
     }
     
@@ -853,6 +856,12 @@ async function saveToSupabase() {
 
 // 强制从数据库加载数据
 async function forceLoadFromDatabase() {
+    // 检查是否是本地测试环境
+    if (window.location.protocol === 'file:') {
+        showNotification('本地测试环境，无法连接数据库', 'warning');
+        return;
+    }
+    
     if (!supabase) {
         showNotification('Supabase 未初始化', 'error');
         return;
@@ -878,8 +887,8 @@ async function forceLoadFromDatabase() {
 }
 
 // 从 Supabase 加载数据
-async function loadFromSupabase(showNotification = true) {
-    if (showNotification) {
+async function loadFromSupabase(showNotificationFlag = true) {
+    if (showNotificationFlag) {
         showNotification('正在从 Supabase 加载数据...', 'info');
     }
     
@@ -893,7 +902,7 @@ async function loadFromSupabase(showNotification = true) {
         
         if (notesError) {
             console.error('加载笔记失败:', notesError);
-            if (showNotification) {
+            if (showNotificationFlag) {
                 showNotification('加载笔记失败: ' + notesError.message, 'error');
             }
             return;
@@ -965,12 +974,12 @@ async function loadFromSupabase(showNotification = true) {
         updateCategorySelect();
         applyTheme(currentTheme);
         
-        if (showNotification) {
+        if (showNotificationFlag) {
             showNotification('数据加载成功！', 'success');
         }
     } catch (error) {
         console.error('从 Supabase 加载数据失败:', error);
-        if (showNotification) {
+        if (showNotificationFlag) {
             showNotification('加载失败: ' + error.message, 'error');
         }
     }
@@ -2103,7 +2112,10 @@ async function deleteNote(noteId) {
             }
         } else {
             console.error('Supabase 客户端未初始化');
-            showNotification('Supabase 未初始化，仅本地删除', 'warning');
+            // 在本地测试环境下不显示错误提示
+            if (window.location.protocol !== 'file:') {
+                showNotification('Supabase 未初始化，仅本地删除', 'warning');
+            }
         }
         
         // 如果删除的是最后编辑的笔记，清除记录
@@ -2375,12 +2387,16 @@ function generateTextQR() {
     };
     
     // 显示当前要分享的笔记信息
+    console.log('=== 分享笔记调试信息 ===');
+    console.log('当前选中的笔记ID:', currentNote);
+    console.log('所有笔记列表:', Object.keys(notes));
     console.log('准备分享笔记:', {
         noteId: currentNote,
         title: note.title,
         content: note.content.substring(0, 50) + '...',
         category: note.category
     });
+    console.log('完整笔记内容:', note);
     
     const dataString = JSON.stringify(noteData);
     
@@ -2393,8 +2409,8 @@ function generateTextQR() {
         <div class="qr-container" style="text-align: center;">
             <div style="background: #f5f5f5; padding: 20px; border-radius: 10px; margin: 20px 0;">
                 <h4>分享链接：</h4>
-                <input type="text" readonly value="${shareUrl}" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 12px;" onclick="this.select()">
-                <p style="font-size: 12px; color: #666; margin: 10px 0;">点击链接复制，发送给他人即可查看笔记</p>
+                <input type="text" readonly value="${shareUrl}" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 12px; cursor: pointer;" onclick="copyShareLinkToClipboard(this)">
+                <p style="font-size: 12px; color: #666; margin: 10px 0;">点击链接自动复制，发送给他人即可查看笔记</p>
             </div>
             
             <div style="background: #e8f4fd; padding: 20px; border-radius: 10px; margin: 20px 0;">
@@ -2498,6 +2514,58 @@ function generateShareId() {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return result;
+}
+
+// 复制分享链接到剪贴板
+function copyShareLinkToClipboard(inputElement) {
+    const shareUrl = inputElement.value;
+    
+    // 尝试使用现代 Clipboard API
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(shareUrl).then(() => {
+            showNotification('分享链接已复制到剪贴板！', 'success');
+            // 添加视觉反馈
+            inputElement.style.backgroundColor = '#e8f5e8';
+            inputElement.style.borderColor = '#4caf50';
+            setTimeout(() => {
+                inputElement.style.backgroundColor = '';
+                inputElement.style.borderColor = '';
+            }, 1000);
+        }).catch(err => {
+            console.error('复制失败:', err);
+            fallbackCopyToClipboard(shareUrl, inputElement);
+        });
+    } else {
+        // 回退方案
+        fallbackCopyToClipboard(shareUrl, inputElement);
+    }
+}
+
+// 回退复制方案
+function fallbackCopyToClipboard(text, inputElement) {
+    try {
+        // 选择文本
+        inputElement.select();
+        inputElement.setSelectionRange(0, 99999); // 对于移动设备
+        
+        // 执行复制命令
+        const successful = document.execCommand('copy');
+        if (successful) {
+            showNotification('分享链接已复制到剪贴板！', 'success');
+            // 添加视觉反馈
+            inputElement.style.backgroundColor = '#e8f5e8';
+            inputElement.style.borderColor = '#4caf50';
+            setTimeout(() => {
+                inputElement.style.backgroundColor = '';
+                inputElement.style.borderColor = '';
+            }, 1000);
+        } else {
+            showNotification('复制失败，请手动复制', 'error');
+        }
+    } catch (err) {
+        console.error('复制失败:', err);
+        showNotification('复制失败，请手动复制', 'error');
+    }
 }
 
 // 复制分享链接
