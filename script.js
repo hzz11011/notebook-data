@@ -3050,41 +3050,63 @@ async function importSharedNote(noteData) {
         }
     }
     
-    // 加载笔记到编辑器
-    loadNote(noteId);
+    // 先更新笔记列表，再加载笔记
     loadNotes();
     
-    // 确保编辑器显示正确的内容
+    // 延迟加载笔记，确保笔记列表已更新
     setTimeout(() => {
+        console.log('准备加载分享笔记:', {
+            noteId: noteId,
+            title: newNote.title,
+            content: newNote.content.substring(0, 100) + '...'
+        });
+        
+        // 直接设置编辑器内容，确保显示正确
         const titleInput = document.getElementById('note-title');
-        const contentDiv = document.getElementById('note-content');
+        const editorDiv = document.getElementById('editor');
         
         if (titleInput) {
             titleInput.value = newNote.title;
             console.log('设置标题:', newNote.title);
         }
         
-        if (contentDiv) {
-            contentDiv.innerHTML = newNote.content;
+        if (editorDiv) {
+            editorDiv.innerHTML = newNote.content;
             console.log('设置内容:', newNote.content.substring(0, 100) + '...');
         }
         
-        // 强制更新当前选中的笔记
-        currentNoteId = noteId;
+        // 设置当前笔记ID
+        currentNote = noteId;
         
-        // 更新笔记选择器
-        const noteSelector = document.getElementById('note-selector');
-        if (noteSelector) {
-            noteSelector.value = noteId;
+        // 更新分类显示
+        updateCategoryDisplay(newNote.category || '默认');
+        
+        // 应用背景色
+        if (newNote.backgroundColor) {
+            editorDiv.style.backgroundColor = newNote.backgroundColor;
+        } else {
+            editorDiv.style.backgroundColor = '#ffffff';
         }
+        
+        // 更新活动状态
+        document.querySelectorAll('.note-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        const noteItem = document.querySelector(`[data-note-id="${noteId}"]`);
+        if (noteItem) {
+            noteItem.classList.add('active');
+        }
+        
+        // 更新左侧分类选择状态
+        updateLeftSidebarCategorySelection(newNote.category || '默认');
         
         console.log('分享笔记已加载:', {
             noteId: noteId,
             title: newNote.title,
             content: newNote.content.substring(0, 100) + '...',
-            currentNoteId: currentNoteId
+            currentNote: currentNote
         });
-    }, 200);
+    }, 100);
     
     showNotification('已导入分享的笔记！', 'success');
 }
