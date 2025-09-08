@@ -157,6 +157,21 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 初始化 Supabase
     setTimeout(async () => {
+        // 检查是否有分享链接，如果有则不加载数据库数据
+        const urlParams = new URLSearchParams(window.location.search);
+        const shareId = urlParams.get('share');
+        const importData = urlParams.get('import');
+        
+        if (shareId || importData) {
+            console.log('检测到分享链接，跳过数据库初始化');
+            // 只初始化基本功能，不加载笔记数据
+            if (initializeSupabase()) {
+                initializeSupabaseTables();
+            }
+            startUsageAutoRefresh();
+            return;
+        }
+        
         // 检查是否是本地测试环境
         if (window.location.protocol === 'file:') {
             console.log('本地测试环境，跳过数据库初始化');
