@@ -3075,21 +3075,11 @@ async function handleShareUrl() {
                 
                 const noteData = data.note_data;
                 
-                // 显示导入确认对话框
-                const confirmImport = confirm(`发现分享的笔记："${noteData.title}"\n\n是否要导入到你的笔记本中？`);
-                if (confirmImport) {
-                    await importSharedNote(noteData);
-                    
-                    // 更新访问计数
-                    await supabase.rpc('increment_access_count', { share_id: shareId });
-                    
-                    // 导入完成后清除URL参数
-                    window.history.replaceState({}, document.title, window.location.pathname);
-                } else {
-                    // 用户选择不导入，清除URL参数
-                    window.history.replaceState({}, document.title, window.location.pathname);
-                    return;
-                }
+                // 直接显示分享内容，不导入
+                displaySharedNote(noteData);
+                
+                // 更新访问计数
+                await supabase.rpc('increment_access_count', { share_id: shareId });
                 
             } else {
                 showNotification('无法加载分享内容，请稍后重试', 'error');
@@ -3103,18 +3093,8 @@ async function handleShareUrl() {
         try {
             const noteData = JSON.parse(decodeURIComponent(importData));
             
-            // 显示导入确认对话框
-            const confirmImport = confirm(`发现分享的笔记："${noteData.title}"\n\n是否要导入到你的笔记本中？`);
-            if (confirmImport) {
-                await importSharedNote(noteData);
-                
-                // 导入完成后清除URL参数
-                window.history.replaceState({}, document.title, window.location.pathname);
-            } else {
-                // 用户选择不导入，清除URL参数
-                window.history.replaceState({}, document.title, window.location.pathname);
-                return;
-            }
+            // 直接显示分享内容，不导入
+            displaySharedNote(noteData);
         } catch (error) {
             console.error('解析分享数据失败:', error);
             showNotification('分享链接无效！', 'error');
@@ -3192,79 +3172,78 @@ async function importSharedNote(noteData) {
     // 更新笔记列表
     loadNotes();
     
-    // 延迟设置编辑器内容，确保笔记列表已更新
-    setTimeout(() => {
-        console.log('=== 开始加载分享笔记 ===');
-        console.log('准备加载分享笔记:', {
-            noteId: noteId,
-            title: newNote.title,
-            content: newNote.content.substring(0, 100) + '...',
-            currentNote: currentNote
-        });
-        
-        // 强制设置当前笔记ID
-        currentNote = noteId;
-        console.log('强制设置 currentNote:', currentNote);
-        
-        // 直接设置编辑器内容，确保显示正确
-        const titleInput = document.getElementById('note-title');
-        const editorDiv = document.getElementById('editor');
-        
-        console.log('找到的元素:', {
-            titleInput: titleInput,
-            editorDiv: editorDiv
-        });
-        
-        if (titleInput) {
-            titleInput.value = newNote.title;
-            console.log('设置标题:', newNote.title);
-        }
-        
-        if (editorDiv) {
-            editorDiv.innerHTML = newNote.content;
-            console.log('设置内容:', newNote.content.substring(0, 100) + '...');
-        }
-        
-        // 更新分类显示
-        updateCategoryDisplay(newNote.category || '默认');
-        
-        // 应用背景色
-        if (newNote.backgroundColor) {
-            editorDiv.style.backgroundColor = newNote.backgroundColor;
-        } else {
-            editorDiv.style.backgroundColor = '#ffffff';
-        }
-        
-        // 更新活动状态
-        document.querySelectorAll('.note-item').forEach(item => {
-            item.classList.remove('active');
-        });
-        const noteItem = document.querySelector(`[data-note-id="${noteId}"]`);
-        if (noteItem) {
-            noteItem.classList.add('active');
-            console.log('设置活动状态:', noteId);
-        } else {
-            console.log('未找到笔记元素:', noteId);
-        }
-        
-        // 更新左侧分类选择状态
-        updateLeftSidebarCategorySelection(newNote.category || '默认');
-        
-        // 再次确认设置
-        setTimeout(() => {
-            console.log('=== 二次确认设置 ===');
-            console.log('当前 currentNote:', currentNote);
-            console.log('编辑器标题:', document.getElementById('note-title')?.value);
-            console.log('编辑器内容:', document.getElementById('editor')?.innerHTML.substring(0, 100) + '...');
-        }, 50);
-        
-        console.log('分享笔记已加载:', {
-            noteId: noteId,
-            title: newNote.title,
-            content: newNote.content.substring(0, 100) + '...',
-            currentNote: currentNote
-        });
-    }, 200);
+    // 等待DOM更新后设置编辑器内容
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    console.log('=== 开始加载分享笔记 ===');
+    console.log('准备加载分享笔记:', {
+        noteId: noteId,
+        title: newNote.title,
+        content: newNote.content.substring(0, 100) + '...',
+        currentNote: currentNote
+    });
+    
+    // 强制设置当前笔记ID
+    currentNote = noteId;
+    console.log('强制设置 currentNote:', currentNote);
+    
+    // 直接设置编辑器内容，确保显示正确
+    const titleInput = document.getElementById('note-title');
+    const editorDiv = document.getElementById('editor');
+    
+    console.log('找到的元素:', {
+        titleInput: titleInput,
+        editorDiv: editorDiv
+    });
+    
+    if (titleInput) {
+        titleInput.value = newNote.title;
+        console.log('设置标题:', newNote.title);
+    }
+    
+    if (editorDiv) {
+        editorDiv.innerHTML = newNote.content;
+        console.log('设置内容:', newNote.content.substring(0, 100) + '...');
+    }
+    
+    // 更新分类显示
+    updateCategoryDisplay(newNote.category || '默认');
+    
+    // 应用背景色
+    if (newNote.backgroundColor) {
+        editorDiv.style.backgroundColor = newNote.backgroundColor;
+    } else {
+        editorDiv.style.backgroundColor = '#ffffff';
+    }
+    
+    // 更新活动状态
+    document.querySelectorAll('.note-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    const noteItem = document.querySelector(`[data-note-id="${noteId}"]`);
+    if (noteItem) {
+        noteItem.classList.add('active');
+        console.log('设置活动状态:', noteId);
+    } else {
+        console.log('未找到笔记元素:', noteId);
+    }
+    
+    // 更新左侧分类选择状态
+    updateLeftSidebarCategorySelection(newNote.category || '默认');
+    
+    // 再次确认设置
+    await new Promise(resolve => setTimeout(resolve, 50));
+    console.log('=== 二次确认设置 ===');
+    console.log('当前 currentNote:', currentNote);
+    console.log('编辑器标题:', document.getElementById('note-title')?.value);
+    console.log('编辑器内容:', document.getElementById('editor')?.innerHTML.substring(0, 100) + '...');
+    
+    console.log('分享笔记已加载:', {
+        noteId: noteId,
+        title: newNote.title,
+        content: newNote.content.substring(0, 100) + '...',
+        currentNote: currentNote
+    });
     
     showNotification('已导入分享的笔记！', 'success');
 }
@@ -3354,10 +3333,6 @@ async function checkForSharedNote() {
                 console.log('创建时间:', data.created_at);
                 console.log('过期时间:', data.expires_at);
                 
-                // 显示详细信息
-                const info = `分享ID: ${shareId}\n标题: ${data.note_data.title}\n创建时间: ${new Date(data.created_at).toLocaleString()}\n过期时间: ${new Date(data.expires_at).toLocaleString()}\n访问次数: ${data.access_count}`;
-                alert(info);
-                
                 // 直接显示分享的笔记内容
                 console.log('直接显示分享笔记内容...');
                 displaySharedNote(data.note_data);
@@ -3376,17 +3351,8 @@ async function checkForSharedNote() {
         try {
             const noteData = JSON.parse(decodeURIComponent(importData));
             
-            // 显示导入确认对话框
-            const confirmImport = confirm(`发现分享的笔记："${noteData.title}"\n\n是否要导入到你的笔记本中？`);
-            if (confirmImport) {
-                await importSharedNote(noteData);
-                
-                // 导入完成后清除URL参数
-                window.history.replaceState({}, document.title, window.location.pathname);
-            } else {
-                // 用户选择不导入，清除URL参数
-                window.history.replaceState({}, document.title, window.location.pathname);
-            }
+            // 直接显示分享内容，不导入
+            displaySharedNote(noteData);
         } catch (error) {
             console.error('解析分享数据失败:', error);
             showNotification('分享链接无效！', 'error');
