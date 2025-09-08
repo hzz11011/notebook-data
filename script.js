@@ -157,6 +157,14 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 初始化 Supabase
     setTimeout(async () => {
+        // 检查是否是本地测试环境
+        if (window.location.protocol === 'file:') {
+            console.log('本地测试环境，跳过数据库初始化');
+            // 本地测试环境，只加载本地数据
+            loadNotes();
+            return;
+        }
+        
         if (initializeSupabase()) {
             // 初始化 Supabase 数据库表
             initializeSupabaseTables();
@@ -759,6 +767,12 @@ async function initializeSupabaseTables() {
 
 // 保存数据到 Supabase
 async function saveToSupabase() {
+    // 检查是否是本地测试环境
+    if (window.location.protocol === 'file:') {
+        console.log('本地测试环境，跳过数据库保存');
+        return { success: true, message: '本地测试环境，已保存到本地存储' };
+    }
+    
     if (!supabase) {
         console.error('Supabase 客户端未初始化');
         showNotification('Supabase 未初始化，无法保存', 'error');
@@ -2416,31 +2430,46 @@ async function createShareUrl(noteData) {
         // 生成短分享ID
         const shareId = generateShareId();
         
-        // 将分享数据存储到数据库
-        if (supabase) {
-            console.log('尝试保存分享数据到数据库...', { shareId, noteData });
-            
-            const { error } = await supabase
-                .from('shared_notes')
-                .insert({
-                    id: shareId,
-                    note_data: noteData,
-                    created_at: new Date().toISOString(),
-                    expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30天后过期
-                });
-            
-            if (error) {
-                console.error('保存分享数据失败:', error);
-                console.log('回退到长链接方式');
-                // 如果数据库保存失败，回退到原来的方式
-                return createShareUrlFallback(noteData);
-            } else {
-                console.log('分享数据保存成功');
-            }
+        // 检查是否是本地测试环境
+        if (window.location.protocol === 'file:') {
+            console.log('本地测试环境，使用本地存储模拟短链接');
+            // 本地测试：将分享数据存储到 localStorage
+            const sharedNotes = JSON.parse(localStorage.getItem('shared_notes') || '{}');
+            sharedNotes[shareId] = {
+                note_data: noteData,
+                created_at: new Date().toISOString(),
+                expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                access_count: 0
+            };
+            localStorage.setItem('shared_notes', JSON.stringify(sharedNotes));
+            console.log('分享数据已保存到本地存储');
         } else {
-            console.log('Supabase 不可用，回退到长链接方式');
-            // 如果 Supabase 不可用，回退到原来的方式
-            return createShareUrlFallback(noteData);
+            // 在线环境：将分享数据存储到数据库
+            if (supabase) {
+                console.log('尝试保存分享数据到数据库...', { shareId, noteData });
+                
+                const { error } = await supabase
+                    .from('shared_notes')
+                    .insert({
+                        id: shareId,
+                        note_data: noteData,
+                        created_at: new Date().toISOString(),
+                        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30天后过期
+                    });
+                
+                if (error) {
+                    console.error('保存分享数据失败:', error);
+                    console.log('回退到长链接方式');
+                    // 如果数据库保存失败，回退到原来的方式
+                    return createShareUrlFallback(noteData);
+                } else {
+                    console.log('分享数据保存成功');
+                }
+            } else {
+                console.log('Supabase 不可用，回退到长链接方式');
+                // 如果 Supabase 不可用，回退到原来的方式
+                return createShareUrlFallback(noteData);
+            }
         }
         
         // 返回短链接
@@ -3024,6 +3053,44 @@ async function handleShareUrl() {
     }
 }
 
+// 直接显示分享的笔记内容
+function displaySharedNote(noteData) {
+    console.log('=== 显示分享笔记内容 ===');
+    console.log('笔记数据:', noteData);
+    
+    // 直接设置编辑器内容
+    const titleInput = document.getElementById('note-title');
+    const editorDiv = document.getElementById('editor');
+    
+    if (titleInput) {
+        titleInput.value = noteData.title || '分享的笔记';
+        console.log('设置标题:', noteData.title);
+    }
+    
+    if (editorDiv) {
+        editorDiv.innerHTML = noteData.content || '';
+        console.log('设置内容:', noteData.content.substring(0, 100) + '...');
+    }
+    
+    // 更新分类显示
+    updateCategoryDisplay(noteData.category || '默认');
+    
+    // 应用背景色
+    if (noteData.backgroundColor) {
+        editorDiv.style.backgroundColor = noteData.backgroundColor;
+    } else {
+        editorDiv.style.backgroundColor = '#ffffff';
+    }
+    
+    // 清除当前笔记ID，表示这是分享的内容
+    currentNote = null;
+    
+    // 更新保存状态
+    updateSaveStatus('saved');
+    
+    console.log('分享笔记内容已显示');
+}
+
 // 导入分享的笔记
 async function importSharedNote(noteData) {
     // 创建新笔记
@@ -3058,15 +3125,26 @@ async function importSharedNote(noteData) {
     
     // 延迟设置编辑器内容，确保笔记列表已更新
     setTimeout(() => {
+        console.log('=== 开始加载分享笔记 ===');
         console.log('准备加载分享笔记:', {
             noteId: noteId,
             title: newNote.title,
-            content: newNote.content.substring(0, 100) + '...'
+            content: newNote.content.substring(0, 100) + '...',
+            currentNote: currentNote
         });
+        
+        // 强制设置当前笔记ID
+        currentNote = noteId;
+        console.log('强制设置 currentNote:', currentNote);
         
         // 直接设置编辑器内容，确保显示正确
         const titleInput = document.getElementById('note-title');
         const editorDiv = document.getElementById('editor');
+        
+        console.log('找到的元素:', {
+            titleInput: titleInput,
+            editorDiv: editorDiv
+        });
         
         if (titleInput) {
             titleInput.value = newNote.title;
@@ -3095,10 +3173,21 @@ async function importSharedNote(noteData) {
         const noteItem = document.querySelector(`[data-note-id="${noteId}"]`);
         if (noteItem) {
             noteItem.classList.add('active');
+            console.log('设置活动状态:', noteId);
+        } else {
+            console.log('未找到笔记元素:', noteId);
         }
         
         // 更新左侧分类选择状态
         updateLeftSidebarCategorySelection(newNote.category || '默认');
+        
+        // 再次确认设置
+        setTimeout(() => {
+            console.log('=== 二次确认设置 ===');
+            console.log('当前 currentNote:', currentNote);
+            console.log('编辑器标题:', document.getElementById('note-title')?.value);
+            console.log('编辑器内容:', document.getElementById('editor')?.innerHTML.substring(0, 100) + '...');
+        }, 50);
         
         console.log('分享笔记已加载:', {
             noteId: noteId,
@@ -3106,21 +3195,34 @@ async function importSharedNote(noteData) {
             content: newNote.content.substring(0, 100) + '...',
             currentNote: currentNote
         });
-    }, 100);
+    }, 200);
     
     showNotification('已导入分享的笔记！', 'success');
 }
 
-// 页面加载完成后处理分享链接 - 已禁用自动导入
-// document.addEventListener('DOMContentLoaded', function() {
-//     setTimeout(handleShareUrl, 1000);
-// });
+// 页面加载完成后自动处理分享链接
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const shareId = urlParams.get('share');
+        const importData = urlParams.get('import');
+        
+        if (shareId || importData) {
+            console.log('检测到分享链接，自动处理...');
+            checkForSharedNote();
+        }
+    }, 1000);
+});
 
 // 手动检查分享链接
 async function checkForSharedNote() {
     const urlParams = new URLSearchParams(window.location.search);
     const shareId = urlParams.get('share');
     const importData = urlParams.get('import');
+    
+    console.log('=== 检查分享链接 ===');
+    console.log('URL参数:', { shareId, importData });
+    console.log('当前URL:', window.location.href);
     
     if (!shareId && !importData) {
         showNotification('当前页面没有分享链接', 'info');
@@ -3131,6 +3233,39 @@ async function checkForSharedNote() {
     if (shareId) {
         try {
             console.log('检查分享ID:', shareId);
+            
+            // 检查是否是本地测试环境
+            if (window.location.protocol === 'file:') {
+                console.log('检测到本地测试环境，从本地存储读取分享数据');
+                
+                // 从本地存储读取分享数据
+                const sharedNotes = JSON.parse(localStorage.getItem('shared_notes') || '{}');
+                const sharedData = sharedNotes[shareId];
+                
+                if (sharedData) {
+                    console.log('找到本地分享数据:', sharedData);
+                    
+                    // 检查是否过期
+                    const now = new Date();
+                    const expiresAt = new Date(sharedData.expires_at);
+                    if (now > expiresAt) {
+                        showNotification('分享链接已过期', 'error');
+                        return;
+                    }
+                    
+                    // 更新访问计数
+                    sharedData.access_count = (sharedData.access_count || 0) + 1;
+                    localStorage.setItem('shared_notes', JSON.stringify(sharedNotes));
+                    
+                    // 直接显示分享的笔记内容
+                    console.log('直接显示分享笔记内容...');
+                    displaySharedNote(sharedData.note_data);
+                } else {
+                    showNotification('分享链接不存在', 'error');
+                }
+                return;
+            }
+            
             const { data, error } = await supabase
                 .from('shared_notes')
                 .select('*')
@@ -3154,17 +3289,15 @@ async function checkForSharedNote() {
                 const info = `分享ID: ${shareId}\n标题: ${data.note_data.title}\n创建时间: ${new Date(data.created_at).toLocaleString()}\n过期时间: ${new Date(data.expires_at).toLocaleString()}\n访问次数: ${data.access_count}`;
                 alert(info);
                 
-                // 直接处理导入，不调用 handleShareUrl
-                const confirmImport = confirm(`发现分享的笔记："${data.note_data.title}"\n\n是否要导入到你的笔记本中？`);
-                if (confirmImport) {
-                    await importSharedNote(data.note_data);
-                    
-                    // 更新访问计数
-                    await supabase.rpc('increment_access_count', { share_id: shareId });
-                    
-                    // 清除URL参数
-                    window.history.replaceState({}, document.title, window.location.pathname);
-                }
+                // 直接显示分享的笔记内容
+                console.log('直接显示分享笔记内容...');
+                displaySharedNote(data.note_data);
+                
+                // 更新访问计数
+                await supabase.rpc('increment_access_count', { share_id: shareId });
+                
+                // 清除URL参数
+                window.history.replaceState({}, document.title, window.location.pathname);
             }
         } catch (error) {
             console.error('检查分享数据失败:', error);
