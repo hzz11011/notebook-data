@@ -3082,6 +3082,9 @@ async function handleShareUrl() {
                     
                     // 更新访问计数
                     await supabase.rpc('increment_access_count', { share_id: shareId });
+                    
+                    // 导入完成后清除URL参数
+                    window.history.replaceState({}, document.title, window.location.pathname);
                 } else {
                     // 用户选择不导入，清除URL参数
                     window.history.replaceState({}, document.title, window.location.pathname);
@@ -3104,6 +3107,9 @@ async function handleShareUrl() {
             const confirmImport = confirm(`发现分享的笔记："${noteData.title}"\n\n是否要导入到你的笔记本中？`);
             if (confirmImport) {
                 await importSharedNote(noteData);
+                
+                // 导入完成后清除URL参数
+                window.history.replaceState({}, document.title, window.location.pathname);
             } else {
                 // 用户选择不导入，清除URL参数
                 window.history.replaceState({}, document.title, window.location.pathname);
@@ -3113,11 +3119,6 @@ async function handleShareUrl() {
             console.error('解析分享数据失败:', error);
             showNotification('分享链接无效！', 'error');
         }
-    }
-    
-    // 清除URL参数
-    if (shareId || importData) {
-        window.history.replaceState({}, document.title, window.location.pathname);
     }
 }
 
@@ -3380,7 +3381,10 @@ async function checkForSharedNote() {
             if (confirmImport) {
                 await importSharedNote(noteData);
                 
-                // 清除URL参数
+                // 导入完成后清除URL参数
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } else {
+                // 用户选择不导入，清除URL参数
                 window.history.replaceState({}, document.title, window.location.pathname);
             }
         } catch (error) {
