@@ -3255,9 +3255,15 @@ document.addEventListener('DOMContentLoaded', function() {
         const shareId = urlParams.get('share');
         const importData = urlParams.get('import');
         
+        console.log('=== 页面加载完成，检查分享链接 ===');
+        console.log('当前URL:', window.location.href);
+        console.log('URL参数:', { shareId, importData });
+        
         if (shareId || importData) {
             console.log('检测到分享链接，自动处理...');
             checkForSharedNote();
+        } else {
+            console.log('没有检测到分享链接');
         }
     }, 1000);
 });
@@ -3339,9 +3345,6 @@ async function checkForSharedNote() {
                 
                 // 更新访问计数
                 await supabase.rpc('increment_access_count', { share_id: shareId });
-                
-                // 清除URL参数
-                window.history.replaceState({}, document.title, window.location.pathname);
             }
         } catch (error) {
             console.error('检查分享数据失败:', error);
