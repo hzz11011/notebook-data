@@ -3050,10 +3050,13 @@ async function importSharedNote(noteData) {
         }
     }
     
-    // 先更新笔记列表，再加载笔记
+    // 先设置当前笔记ID，防止 loadNotes 加载其他笔记
+    currentNote = noteId;
+    
+    // 更新笔记列表
     loadNotes();
     
-    // 延迟加载笔记，确保笔记列表已更新
+    // 延迟设置编辑器内容，确保笔记列表已更新
     setTimeout(() => {
         console.log('准备加载分享笔记:', {
             noteId: noteId,
@@ -3074,9 +3077,6 @@ async function importSharedNote(noteData) {
             editorDiv.innerHTML = newNote.content;
             console.log('设置内容:', newNote.content.substring(0, 100) + '...');
         }
-        
-        // 设置当前笔记ID
-        currentNote = noteId;
         
         // 更新分类显示
         updateCategoryDisplay(newNote.category || '默认');
