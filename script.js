@@ -2360,6 +2360,14 @@ function generateTextQR() {
         createdAt: note.createdAt
     };
     
+    // 显示当前要分享的笔记信息
+    console.log('准备分享笔记:', {
+        noteId: currentNote,
+        title: note.title,
+        content: note.content.substring(0, 50) + '...',
+        category: note.category
+    });
+    
     const dataString = JSON.stringify(noteData);
     
     // 创建分享链接
@@ -2474,6 +2482,14 @@ async function copyShareUrl() {
         category: note.category,
         createdAt: note.createdAt
     };
+    
+    // 显示当前要分享的笔记信息
+    console.log('准备分享笔记:', {
+        noteId: currentNote,
+        title: note.title,
+        content: note.content.substring(0, 50) + '...',
+        category: note.category
+    });
     
     try {
         const shareUrl = await createShareUrl(noteData);
