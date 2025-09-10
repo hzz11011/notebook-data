@@ -177,7 +177,7 @@ body {
 .usage-compact {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     background: rgba(255, 255, 255, 0.15);
     padding: 6px 10px;
     border-radius: 18px;
@@ -186,10 +186,11 @@ body {
 
 .usage-number {
     color: white;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     font-weight: 600;
-    min-width: 20px;
+    min-width: 16px;
     text-align: center;
+    white-space: nowrap;
 }
 
 .refresh-usage-btn {
@@ -1247,10 +1248,12 @@ body {
     
     .usage-compact {
         padding: 4px 8px;
+        gap: 3px;
     }
     
     .usage-number {
-        font-size: 0.8rem;
+        font-size: 0.7rem;
+        min-width: 14px;
     }
 
     .note-header {

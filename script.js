@@ -1097,9 +1097,8 @@ async function updateUsageDisplay() {
         // 如果无法获取 Supabase 数据，显示本地数据
         const localNotesCount = Object.keys(notes).length;
         document.getElementById('notes-count').textContent = localNotesCount;
-        document.getElementById('db-size').textContent = '本地存储';
+        document.getElementById('db-size').textContent = '本地';
         document.getElementById('usage-percentage').textContent = '-';
-        document.getElementById('usage-bar').style.width = '0%';
         return;
     }
     
@@ -1115,20 +1114,6 @@ async function updateUsageDisplay() {
     console.log(`使用率计算: ${currentSizeBytes} 字节 / ${totalLimitBytes} 字节 = ${usagePercentage.toFixed(1)}%`);
     
     document.getElementById('usage-percentage').textContent = `${usagePercentage.toFixed(1)}%`;
-    
-    // 更新进度条
-    const usageBar = document.getElementById('usage-bar');
-    usageBar.style.width = `${usagePercentage}%`;
-    
-    // 根据使用率设置颜色
-    usageBar.className = 'usage-bar';
-    if (usagePercentage < 50) {
-        usageBar.classList.add('low');
-    } else if (usagePercentage < 80) {
-        usageBar.classList.add('medium');
-    } else {
-        usageBar.classList.add('high');
-    }
 }
 
 // 刷新使用量
@@ -2760,6 +2745,14 @@ function showModal() {
 // 关闭模态框
 function closeModal() {
     document.getElementById('modal').style.display = 'none';
+}
+
+// 点击外部区域关闭模态框
+function closeModalOnOutside(event) {
+    // 如果点击的是模态框背景（不是内容区域），则关闭模态框
+    if (event.target === event.currentTarget) {
+        closeModal();
+    }
 }
 
 // 移动端侧边栏切换
