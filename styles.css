@@ -61,8 +61,15 @@ body {
     color: white;
 }
 
-.sidebar-header h2 {
+.header-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-bottom: 15px;
+}
+
+.sidebar-header h2 {
+    margin: 0;
     font-size: 1.5rem;
     font-weight: 600;
 }
@@ -70,11 +77,10 @@ body {
 .user-info {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 8px;
     background: rgba(255, 255, 255, 0.1);
-    padding: 8px 12px;
-    border-radius: 8px;
-    margin-bottom: 15px;
+    padding: 6px 10px;
+    border-radius: 6px;
 }
 
 .user-info span {
@@ -101,19 +107,23 @@ body {
     display: flex;
     gap: 8px;
     align-items: center;
-    flex-wrap: wrap;
+    justify-content: flex-start;
 }
 
 .add-note-btn {
     background: rgba(255, 255, 255, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.4);
     color: white;
-    padding: 8px 16px;
-    border-radius: 20px;
+    padding: 8px;
+    border-radius: 50%;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 1rem;
     transition: all 0.3s ease;
-    font-weight: 600;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .add-note-btn:hover {
@@ -126,11 +136,16 @@ body {
     background: rgba(255, 255, 255, 0.2);
     border: 1px solid rgba(255, 255, 255, 0.3);
     color: white;
-    padding: 8px 12px;
-    border-radius: 20px;
+    padding: 8px;
+    border-radius: 50%;
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: 1rem;
     transition: all 0.3s ease;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .add-category-btn:hover {
@@ -157,6 +172,45 @@ body {
 .import-btn:hover {
     background: rgba(255, 255, 255, 0.3);
     transform: translateY(-2px);
+}
+
+.usage-compact {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 6px 10px;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.usage-number {
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 600;
+    min-width: 20px;
+    text-align: center;
+}
+
+.refresh-usage-btn {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 0.8rem;
+    padding: 2px;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.refresh-usage-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: rotate(180deg);
 }
 
 .categories-container {
@@ -1127,98 +1181,6 @@ body {
     background: #218838;
 }
 
-/* 使用量显示样式 */
-.usage-info {
-    background: var(--card-bg);
-    border-radius: 8px;
-    padding: 12px;
-    margin: 10px 0;
-    border: 1px solid var(--border-color);
-}
-
-.usage-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-color);
-}
-
-.usage-header i {
-    margin-right: 6px;
-    color: var(--primary-color);
-}
-
-.refresh-usage-btn {
-    background: none;
-    border: none;
-    color: var(--text-color);
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
-    transition: all 0.2s ease;
-}
-
-.refresh-usage-btn:hover {
-    background: var(--hover-bg);
-    color: var(--primary-color);
-}
-
-.refresh-usage-btn i {
-    font-size: 12px;
-}
-
-.usage-content {
-    font-size: 12px;
-}
-
-.usage-item {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 4px;
-    align-items: center;
-}
-
-.usage-label {
-    color: var(--text-secondary);
-    font-weight: 500;
-}
-
-.usage-value {
-    color: var(--text-color);
-    font-weight: 600;
-}
-
-.usage-progress {
-    width: 100%;
-    height: 6px;
-    background: var(--border-color);
-    border-radius: 3px;
-    margin-top: 8px;
-    overflow: hidden;
-}
-
-.usage-bar {
-    height: 100%;
-    background: linear-gradient(90deg, #4CAF50 0%, #FFC107 70%, #F44336 100%);
-    border-radius: 3px;
-    transition: width 0.3s ease;
-    width: 0%;
-}
-
-.usage-bar.low {
-    background: #4CAF50;
-}
-
-.usage-bar.medium {
-    background: #FFC107;
-}
-
-.usage-bar.high {
-    background: #F44336;
-}
 
 /* 旋转动画 */
 @keyframes spin {
@@ -1273,13 +1235,22 @@ body {
     }
     
     .sidebar-actions {
-        flex-direction: column;
+        flex-direction: row;
         gap: 8px;
+        justify-content: flex-start;
     }
     
     .add-note-btn {
-        width: 100%;
-        text-align: center;
+        width: 36px;
+        height: 36px;
+    }
+    
+    .usage-compact {
+        padding: 4px 8px;
+    }
+    
+    .usage-number {
+        font-size: 0.8rem;
     }
 
     .note-header {

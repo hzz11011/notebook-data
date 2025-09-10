@@ -42,50 +42,30 @@
         <!-- 左侧边栏 -->
         <div class="sidebar">
             <div class="sidebar-header">
-                <h2><i class="fas fa-book"></i> 我的记事本</h2>
-                <div class="user-info">
-                    <span id="current-user">用户</span>
-                    <button class="logout-btn" onclick="logout()" title="退出登录">
-                        <i class="fas fa-sign-out-alt"></i>
-                    </button>
+                <div class="header-content">
+                    <h2><i class="fas fa-book"></i> HZZ</h2>
+                    <div class="user-info">
+                        <span id="current-user">用户</span>
+                        <button class="logout-btn" onclick="logout()" title="退出登录">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="sidebar-actions">
-                    <button class="add-note-btn" onclick="createNewNote()">
-                        <i class="fas fa-plus"></i> 新建笔记
+                    <button class="add-note-btn" onclick="createNewNote()" title="新建笔记">
+                        <i class="fas fa-plus"></i>
                     </button>
-                    <button class="add-category-btn" onclick="addCategory()">
-                        <i class="fas fa-folder-plus"></i> 新建分类
+                    <button class="add-category-btn" onclick="addCategory()" title="新建分类">
+                        <i class="fas fa-folder-plus"></i>
                     </button>
                     <button class="import-btn" onclick="importNotesV2()" title="导入笔记 (支持 JSON, MD, TXT)">
                         <i class="fas fa-upload"></i>
                     </button>
-                </div>
-                
-                <!-- 使用量显示区域 -->
-                <div class="usage-info">
-                    <div class="usage-header">
-                        <i class="fas fa-database"></i>
-                        <span>存储使用量</span>
+                    <div class="usage-compact">
+                        <span class="usage-number" id="notes-count">-</span>
                         <button class="refresh-usage-btn" onclick="refreshUsage()" title="刷新使用量">
                             <i class="fas fa-sync-alt"></i>
                         </button>
-                    </div>
-                    <div class="usage-content">
-                        <div class="usage-item">
-                            <span class="usage-label">笔记数量:</span>
-                            <span class="usage-value" id="notes-count">-</span>
-                        </div>
-                        <div class="usage-item">
-                            <span class="usage-label">数据库大小:</span>
-                            <span class="usage-value" id="db-size">-</span>
-                        </div>
-                        <div class="usage-item">
-                            <span class="usage-label">使用率:</span>
-                            <span class="usage-value" id="usage-percentage">-</span>
-                        </div>
-                        <div class="usage-progress">
-                            <div class="usage-bar" id="usage-bar"></div>
-                        </div>
                     </div>
                 </div>
             </div>
