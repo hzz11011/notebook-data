@@ -89,12 +89,17 @@ let supabase = null;
 // 延迟初始化 Supabase
 function initializeSupabase() {
     try {
+        console.log('开始初始化 Supabase...');
+        console.log('Supabase URL:', supabaseUrl);
+        console.log('Supabase Key 前10位:', supabaseKey.substring(0, 10) + '...');
+        console.log('window.supabase 是否存在:', !!window.supabase);
+        
         if (window.supabase) {
             supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
             console.log('Supabase 客户端初始化成功');
             return true;
         } else {
-            console.error('Supabase 库未加载');
+            console.error('Supabase 库未加载，请检查网络连接或CDN');
             return false;
         }
     } catch (error) {
@@ -1018,6 +1023,8 @@ async function autoSaveToSupabase() {
 async function getDatabaseUsage() {
     if (!supabase) {
         console.error('Supabase 客户端未初始化');
+        console.log('当前环境:', window.location.href);
+        console.log('Supabase库是否加载:', !!window.supabase);
         return null;
     }
     
@@ -1096,9 +1103,39 @@ async function updateUsageDisplay() {
     if (!usage) {
         // 如果无法获取 Supabase 数据，显示本地数据
         const localNotesCount = Object.keys(notes).length;
+        
+        // 计算本地存储大小
+        let localStorageSize = 0;
+        for (let key in localStorage) {
+            if (localStorage.hasOwnProperty(key)) {
+                localStorageSize += localStorage[key].length;
+            }
+        }
+        
+        // 格式化大小显示
+        let sizeDisplay = '0B';
+        if (localStorageSize > 1024 * 1024) {
+            sizeDisplay = (localStorageSize / (1024 * 1024)).toFixed(1) + 'MB';
+        } else if (localStorageSize > 1024) {
+            sizeDisplay = (localStorageSize / 1024).toFixed(1) + 'KB';
+        } else {
+            sizeDisplay = localStorageSize + 'B';
+        }
+        
+        // 计算使用率（假设本地存储限制为10MB）
+        const localLimitBytes = 10 * 1024 * 1024; // 10MB 本地存储限制
+        const localUsagePercentage = Math.min((localStorageSize / localLimitBytes) * 100, 100);
+        
         document.getElementById('notes-count').textContent = localNotesCount;
-        document.getElementById('db-size').textContent = '本地';
-        document.getElementById('usage-percentage').textContent = '-';
+        document.getElementById('db-size').textContent = sizeDisplay;
+        document.getElementById('usage-percentage').textContent = localUsagePercentage.toFixed(1) + '%';
+        
+        // 显示调试信息
+        console.log('使用本地数据:', {
+            notesCount: localNotesCount,
+            size: sizeDisplay,
+            percentage: localUsagePercentage.toFixed(1) + '%'
+        });
         return;
     }
     
